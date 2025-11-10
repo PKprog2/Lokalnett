@@ -48,7 +48,7 @@ CREATE TABLE bygder (
 -- Enable RLS
 ALTER TABLE bygder ENABLE ROW LEVEL SECURITY;
 
--- Policies
+-- Policies DENNE MÅ LEGGES TIL FRA HER
 CREATE POLICY "Bygder are viewable by members" 
   ON bygder FOR SELECT 
   USING (
@@ -67,6 +67,7 @@ CREATE POLICY "Creators can update their bygder"
   ON bygder FOR UPDATE 
   USING (auth.uid() = created_by);
 ```
+-- TIL HER
 
 ### bygd_members
 Join table for users and bygder (many-to-many relationship).
