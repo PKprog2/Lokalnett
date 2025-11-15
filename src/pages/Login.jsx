@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import harpBackground from '../../pictures/harp.png'
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true)
@@ -40,9 +41,9 @@ export default function Login() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>LokalNett</h1>
+        <h1 style={styles.title}>BygdeNett</h1>
         <p style={styles.subtitle}>
-          Sosialt nettverk for små norske bygdesamfunn
+          Sosialt nettverk for norske bygdesamfunn
         </p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
@@ -117,13 +118,19 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#f5f5f5',
+    backgroundImage: `linear-gradient(rgba(24, 104, 48, 0.55), rgba(12, 32, 18, 0.55)), url(${harpBackground})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
     padding: '20px',
   },
   card: {
-    backgroundColor: 'white',
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
     padding: '40px',
     borderRadius: '10px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+    boxShadow: '0 2px 1px rgba(0, 0, 0, 0.2)',
+    backdropFilter: 'blur(1px)',
+    WebkitBackdropFilter: 'blur(1px)',
     width: '100%',
     maxWidth: '400px',
   },

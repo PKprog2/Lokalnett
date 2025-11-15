@@ -12,15 +12,17 @@ export default function BygdFeed() {
   const [bygd, setBygd] = useState(null)
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [isMember, setIsMember] = useState(false)
 
   useEffect(() => {
+    if (!bygdId || !user?.id) return
     fetchBygdAndPosts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bygdId])
+  }, [bygdId, user?.id])
 
   const fetchBygdAndPosts = async () => {
+    setLoading(true)
     try {
-      // Fetch bygd details
       const { data: bygdData, error: bygdError } = await supabase
         .from('bygder')
         .select('*')
@@ -30,7 +32,23 @@ export default function BygdFeed() {
       if (bygdError) throw bygdError
       setBygd(bygdData)
 
-      // Fetch posts
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('bygd_members')
+        .select('id')
+        .eq('bygd_id', bygdId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (membershipError) throw membershipError
+
+      const member = !!membershipData
+      setIsMember(member)
+
+      if (!member) {
+        setPosts([])
+        return
+      }
+
       await fetchPosts()
     } catch (error) {
       console.error('Error fetching bygd:', error)
@@ -44,16 +62,34 @@ export default function BygdFeed() {
     try {
       const { data, error } = await supabase
         .from('posts')
-        .select(`
-          *,
-          profiles:user_id (display_name, avatar_url),
-          likes (user_id)
-        `)
+        .select('*')
         .eq('bygd_id', bygdId)
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setPosts(data || [])
+
+      const postsWithDetails = await Promise.all(
+        (data || []).map(async (post) => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name, avatar_url')
+            .eq('id', post.user_id)
+            .single()
+
+          const { data: likes } = await supabase
+            .from('likes')
+            .select('user_id')
+            .eq('post_id', post.id)
+
+          return {
+            ...post,
+            profiles: profile,
+            likes: likes || [],
+          }
+        })
+      )
+
+      setPosts(postsWithDetails)
     } catch (error) {
       console.error('Error fetching posts:', error)
     }
@@ -85,24 +121,37 @@ export default function BygdFeed() {
       </header>
 
       <div style={styles.content}>
-        <CreatePost bygdId={bygdId} onPostCreated={handlePostCreated} />
-
-        <div style={styles.postsContainer}>
-          {posts.length === 0 ? (
-            <div style={styles.emptyState}>
-              <p>Ingen innlegg ennå. Vær den første til å dele noe!</p>
+        {isMember ? (
+          <>
+            <CreatePost bygdId={bygdId} onPostCreated={handlePostCreated} />
+            <div style={styles.postsContainer}>
+              {posts.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <p>Ingen innlegg ennå. Vær den første til å dele noe!</p>
+                </div>
+              ) : (
+                posts.map((post) => (
+                  <Post
+                    key={post.id}
+                    post={post}
+                    currentUserId={user.id}
+                    onUpdate={fetchPosts}
+                  />
+                ))
+              )}
             </div>
-          ) : (
-            posts.map((post) => (
-              <Post
-                key={post.id}
-                post={post}
-                currentUserId={user.id}
-                onUpdate={fetchPosts}
-              />
-            ))
-          )}
-        </div>
+          </>
+        ) : (
+          <div style={styles.accessCard}>
+            <h2 style={styles.accessTitle}>Bli medlem for å se innhold</h2>
+            <p style={styles.accessText}>
+              Du har ikke tilgang til denne bygda ennå. Gå tilbake til oversikten og bli med for å se innleggene.
+            </p>
+            <button style={styles.accessButton} onClick={() => navigate('/bygder')}>
+              Finn bygder
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -162,5 +211,32 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '8px',
     color: '#666',
+  },
+  accessCard: {
+    marginTop: '40px',
+    backgroundColor: 'white',
+    borderRadius: '10px',
+    padding: '40px',
+    textAlign: 'center',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.08)',
+  },
+  accessTitle: {
+    margin: '0 0 12px 0',
+    fontSize: '24px',
+    color: '#2c5f2d',
+  },
+  accessText: {
+    margin: '0 0 24px 0',
+    color: '#555',
+    fontSize: '15px',
+  },
+  accessButton: {
+    padding: '12px 24px',
+    backgroundColor: '#2c5f2d',
+    color: 'white',
+    border: 'none',
+    borderRadius: '999px',
+    fontSize: '15px',
+    cursor: 'pointer',
   },
 }
