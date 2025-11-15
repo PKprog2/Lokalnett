@@ -200,6 +200,7 @@ CREATE TABLE comments (
   post_id UUID REFERENCES posts(id) ON DELETE CASCADE NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   content TEXT NOT NULL,
+  parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -237,6 +238,52 @@ CREATE POLICY "Users can update own comments"
 
 CREATE POLICY "Users can delete own comments" 
   ON comments FOR DELETE 
+  USING (auth.uid() = user_id);
+```
+
+### comment_likes
+Stores per-user likes on individual comments so they stay in sync across devices.
+
+```sql
+CREATE TABLE comment_likes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  comment_id UUID REFERENCES comments(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(comment_id, user_id)
+);
+
+-- Enable RLS
+ALTER TABLE comment_likes ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Members can view comment likes" 
+  ON comment_likes FOR SELECT 
+  USING (
+    EXISTS (
+      SELECT 1 FROM comments 
+      JOIN posts ON comments.post_id = posts.id
+      JOIN bygd_members ON posts.bygd_id = bygd_members.bygd_id
+      WHERE comments.id = comment_likes.comment_id 
+      AND bygd_members.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can like comments" 
+  ON comment_likes FOR INSERT 
+  WITH CHECK (
+    auth.uid() = user_id AND
+    EXISTS (
+      SELECT 1 FROM comments 
+      JOIN posts ON comments.post_id = posts.id
+      JOIN bygd_members ON posts.bygd_id = bygd_members.bygd_id
+      WHERE comments.id = comment_likes.comment_id 
+      AND bygd_members.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can remove own comment likes" 
+  ON comment_likes FOR DELETE 
   USING (auth.uid() = user_id);
 ```
 

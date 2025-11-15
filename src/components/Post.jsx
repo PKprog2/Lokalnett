@@ -1,17 +1,115 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../utils/supabaseClient'
 import Comments from './Comments'
 
 export default function Post({ post, currentUserId, onUpdate }) {
-  const [showComments, setShowComments] = useState(false)
+  const [showComments, setShowComments] = useState((post.comments_count || 0) > 0)
   const [isLiked, setIsLiked] = useState(false)
-  const [likesCount, setLikesCount] = useState(post.likes_count || 0)
+  const [commentCount, setCommentCount] = useState(post.comments_count || 0)
+  const [likeUsers, setLikeUsers] = useState(post.likes || [])
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     // Check if current user has liked this post
     const userLiked = post.likes?.some(like => like.user_id === currentUserId)
     setIsLiked(userLiked)
   }, [post.likes, currentUserId])
+
+  useEffect(() => {
+    setCommentCount(post.comments_count || 0)
+    setLikeUsers(post.likes || [])
+  }, [post.likes_count, post.comments_count, post.likes])
+
+  useEffect(() => {
+    setShowComments((post.comments_count || 0) > 0)
+  }, [post.id, post.comments_count])
+
+  useEffect(() => {
+    if (commentCount > 0) {
+      setShowComments(true)
+    }
+  }, [commentCount])
+
+  const refreshCommentCount = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('comments')
+        .select('id', { count: 'exact', head: true })
+        .eq('post_id', post.id)
+
+      if (error) throw error
+      setCommentCount(count ?? 0)
+    } catch (error) {
+      console.error('Error refreshing comment count:', error)
+    }
+  }, [post.id])
+
+  const refreshLikeUsers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('likes')
+        .select('user_id')
+        .eq('post_id', post.id)
+
+      if (error) throw error
+
+      const likeRows = data || []
+      const userIds = Array.from(new Set(likeRows.map((like) => like.user_id).filter(Boolean)))
+
+      if (userIds.length === 0) {
+        setLikeUsers(likeRows)
+        return
+      }
+
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .in('id', userIds)
+
+      if (profileError) {
+        console.error('Error fetching like profiles:', profileError)
+        setLikeUsers(likeRows)
+        return
+      }
+
+      const profileMap = new Map((profileData || []).map((profile) => [profile.id, profile]))
+      const enriched = likeRows.map((like) => ({
+        ...like,
+        profiles: profileMap.get(like.user_id) || null,
+      }))
+      setLikeUsers(enriched)
+    } catch (error) {
+      console.error('Error refreshing likes:', error)
+    }
+  }, [post.id])
+
+  useEffect(() => {
+    refreshCommentCount()
+    refreshLikeUsers()
+  }, [refreshCommentCount, refreshLikeUsers])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`post-comments-${post.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+          filter: `post_id=eq.${post.id}`,
+        },
+        () => {
+          refreshCommentCount()
+          refreshLikeUsers()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [post.id, refreshCommentCount, refreshLikeUsers])
 
   const handleLike = async () => {
     try {
@@ -25,7 +123,8 @@ export default function Post({ post, currentUserId, onUpdate }) {
 
         if (error) throw error
         setIsLiked(false)
-        setLikesCount(prev => prev - 1)
+        onUpdate?.()
+        await refreshLikeUsers()
       } else {
         // Like
         const { error } = await supabase
@@ -34,10 +133,36 @@ export default function Post({ post, currentUserId, onUpdate }) {
 
         if (error) throw error
         setIsLiked(true)
-        setLikesCount(prev => prev + 1)
+        onUpdate?.()
+        await refreshLikeUsers()
       }
     } catch (error) {
       console.error('Error toggling like:', error)
+    }
+  }
+
+  const handleDeletePost = async () => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Vil du slette dette innlegget? Dette kan ikke angres.')
+      if (!confirmed) return
+    }
+
+    setDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', post.id)
+        .eq('user_id', currentUserId)
+
+      if (error) throw error
+
+      onUpdate?.()
+    } catch (error) {
+      console.error('Error deleting post:', error)
+      alert('Kunne ikke slette innlegget: ' + error.message)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -64,7 +189,8 @@ export default function Post({ post, currentUserId, onUpdate }) {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <div style={styles.userInfo}>
+        <div style={styles.headerRow}>
+          <div style={styles.userInfo}>
           <div style={styles.avatar}>
             {post.profiles?.avatar_url ? (
               <img src={post.profiles.avatar_url} alt="" style={styles.avatarImg} />
@@ -76,6 +202,20 @@ export default function Post({ post, currentUserId, onUpdate }) {
             <div style={styles.displayName}>{post.profiles?.display_name || 'Ukjent'}</div>
             <div style={styles.timestamp}>{formatDate(post.created_at)}</div>
           </div>
+        </div>
+          {post.user_id === currentUserId && (
+            <button
+              onClick={handleDeletePost}
+              style={{
+                ...styles.deleteButton,
+                opacity: deleting ? 0.6 : 1,
+                cursor: deleting ? 'not-allowed' : 'pointer',
+              }}
+              disabled={deleting}
+            >
+              {deleting ? 'Sletter…' : 'Slett'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -94,8 +234,8 @@ export default function Post({ post, currentUserId, onUpdate }) {
       </div>
 
       <div style={styles.stats}>
-        <span>{likesCount} liker dette</span>
-        <span>{post.comments_count || 0} kommentarer</span>
+        <span title={getLikeTooltip(likeUsers)}>{getLikeSummary(likeUsers, currentUserId)}</span>
+        <span>{commentCount} kommentarer</span>
       </div>
 
       <div style={styles.actions}>
@@ -106,14 +246,15 @@ export default function Post({ post, currentUserId, onUpdate }) {
             color: isLiked ? '#2c5f2d' : '#666',
             fontWeight: isLiked ? '600' : 'normal',
           }}
+          title={getLikeTooltip(likeUsers)}
         >
           {isLiked ? '❤️' : '🤍'} Lik
         </button>
         <button
-          onClick={() => setShowComments(!showComments)}
+          onClick={() => setShowComments((prev) => !prev)}
           style={styles.actionButton}
         >
-          💬 Kommenter
+          {showComments ? '🙈 Skjul' : '💬 Kommenter'}
         </button>
       </div>
 
@@ -121,11 +262,51 @@ export default function Post({ post, currentUserId, onUpdate }) {
         <Comments
           postId={post.id}
           currentUserId={currentUserId}
-          onUpdate={onUpdate}
+          onUpdate={() => {
+            onUpdate?.()
+            refreshCommentCount()
+          }}
+          onCommentCountChange={setCommentCount}
         />
       )}
     </div>
   )
+}
+
+const getDisplayName = (entry) => entry?.profiles?.display_name || 'en bruker'
+
+const getLikeSummary = (likes = [], currentUserId) => {
+  const total = likes.length
+  if (total === 0) return 'Ingen liker dette ennå'
+
+  const youLike = likes.some((like) => like.user_id === currentUserId)
+  const others = likes.filter((like) => like.user_id !== currentUserId)
+
+  if (youLike) {
+    if (others.length === 0) return 'Du liker dette'
+    if (others.length === 1) return `Du og ${getDisplayName(others[0])} liker dette`
+    return `Du og ${others.length} andre liker dette`
+  }
+
+  if (total === 1) return `${getDisplayName(likes[0])} liker dette`
+  if (total === 2) return `${getDisplayName(likes[0])} og ${getDisplayName(likes[1])} liker dette`
+
+  const [first, second] = likes
+  return `${getDisplayName(first)}, ${getDisplayName(second)} og ${total - 2} andre liker dette`
+}
+
+const getLikeTooltip = (likes = []) => {
+  const names = likes
+    .map((like) => like.profiles?.display_name)
+    .filter(Boolean)
+
+  if (names.length === 0) return 'Ingen liker dette ennå'
+  if (names.length === 1) return `${names[0]} liker dette`
+  if (names.length <= 5) {
+    const last = names[names.length - 1]
+    return `${names.slice(0, -1).join(', ')} og ${last} liker dette`
+  }
+  return `${names.slice(0, 5).join(', ')} og ${names.length - 5} andre liker dette`
 }
 
 const styles = {
@@ -138,6 +319,12 @@ const styles = {
   },
   header: {
     marginBottom: '12px',
+  },
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '12px',
   },
   userInfo: {
     display: 'flex',
@@ -170,6 +357,16 @@ const styles = {
   timestamp: {
     fontSize: '12px',
     color: '#999',
+  },
+  deleteButton: {
+    border: '1px solid #f0c4c4',
+    backgroundColor: '#fff5f5',
+    color: '#c33',
+    borderRadius: '20px',
+    padding: '6px 12px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 600,
   },
   content: {
     marginBottom: '12px',

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import harpBackground from '../../pictures/harp.png'
@@ -10,8 +10,38 @@ export default function Login() {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pendingInviteBygdId, setPendingInviteBygdId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('inviteBygdId')
+    }
+    return null
+  })
   const { signIn, signUp } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const params = new URLSearchParams(window.location.search)
+    const inviteBygdId = params.get('bygd')
+
+    if (inviteBygdId) {
+      localStorage.setItem('inviteBygdId', inviteBygdId)
+      setPendingInviteBygdId(inviteBygdId)
+      setIsLogin(false)
+
+      const currentUrl = new URL(window.location.href)
+      currentUrl.searchParams.delete('bygd')
+      window.history.replaceState({}, '', currentUrl.toString())
+      return
+    }
+
+    const storedInvite = localStorage.getItem('inviteBygdId')
+    if (storedInvite) {
+      setPendingInviteBygdId(storedInvite)
+      setIsLogin(false)
+    }
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -45,6 +75,15 @@ export default function Login() {
         <p style={styles.subtitle}>
           Sosialt nettverk for norske bygdesamfunn
         </p>
+
+        {pendingInviteBygdId && (
+          <div style={styles.inviteNotice}>
+            <p style={styles.inviteNoticeTitle}>Du er invitert til en bygd!</p>
+            <p style={styles.inviteNoticeText}>
+              Fullfør registreringen, så sender vi deg automatisk inn i bygda etterpå.
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           {!isLogin && (
@@ -194,5 +233,23 @@ const styles = {
     color: '#c33',
     borderRadius: '5px',
     fontSize: '14px',
+  },
+  inviteNotice: {
+    backgroundColor: '#e6f4ea',
+    border: '1px solid #b9dfc7',
+    borderRadius: '6px',
+    padding: '12px',
+    marginBottom: '16px',
+  },
+  inviteNoticeTitle: {
+    margin: 0,
+    fontWeight: '600',
+    color: '#1f4f22',
+    fontSize: '15px',
+  },
+  inviteNoticeText: {
+    margin: '4px 0 0 0',
+    fontSize: '13px',
+    color: '#1f4f22',
   },
 }

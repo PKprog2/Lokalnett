@@ -1,12 +1,47 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../utils/supabaseClient'
+import GifPicker from './GifPicker'
 
 export default function CreatePost({ bygdId, onPostCreated }) {
   const [content, setContent] = useState('')
   const [mediaFile, setMediaFile] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState(null)
+  const [isGifPickerOpen, setIsGifPickerOpen] = useState(false)
+  const [gifImporting, setGifImporting] = useState(false)
   const { user } = useAuth()
+
+  useEffect(() => {
+    return () => {
+      if (mediaPreviewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(mediaPreviewUrl)
+      }
+    }
+  }, [mediaPreviewUrl])
+
+  const updatePreviewFromFile = (file) => {
+    if (mediaPreviewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(mediaPreviewUrl)
+    }
+
+    if (!file) {
+      setMediaPreviewUrl(null)
+      return
+    }
+
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      const objectUrl = URL.createObjectURL(file)
+      setMediaPreviewUrl(objectUrl)
+    } else {
+      setMediaPreviewUrl(null)
+    }
+  }
+
+  const resetMedia = () => {
+    setMediaFile(null)
+    updatePreviewFromFile(null)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -52,8 +87,8 @@ export default function CreatePost({ bygdId, onPostCreated }) {
 
       if (postError) throw postError
 
-      setContent('')
-      setMediaFile(null)
+  setContent('')
+  resetMedia()
       onPostCreated()
     } catch (error) {
       console.error('Error creating post:', error)
@@ -66,12 +101,36 @@ export default function CreatePost({ bygdId, onPostCreated }) {
   const handleFileChange = (e) => {
     const file = e.target.files[0]
     if (file) {
-      // Check file size (max 50MB)
       if (file.size > 50 * 1024 * 1024) {
         alert('Filen er for stor. Maksimal størrelse er 50MB.')
         return
       }
       setMediaFile(file)
+      updatePreviewFromFile(file)
+    }
+  }
+
+  const handleGifSelect = async (gif) => {
+    if (!gif?.url) return
+    setIsGifPickerOpen(false)
+    setGifImporting(true)
+    try {
+      const response = await fetch(gif.url)
+      const blob = await response.blob()
+      if (!blob.size) {
+        throw new Error('Tomt GIF-svar')
+      }
+      const extension = (gif.url.split('.').pop() || 'gif').split('?')[0]
+      const gifFile = new File([blob], `gif-${Date.now()}.${extension}`, {
+        type: blob.type || 'image/gif',
+      })
+      setMediaFile(gifFile)
+      updatePreviewFromFile(gifFile)
+    } catch (error) {
+      console.error('Error importing GIF:', error)
+      alert('Kunne ikke hente GIF. Kontroller internettilkoblingen og prøv igjen.')
+    } finally {
+      setGifImporting(false)
     }
   }
 
@@ -88,38 +147,62 @@ export default function CreatePost({ bygdId, onPostCreated }) {
 
         {mediaFile && (
           <div style={styles.mediaPreview}>
-            <span>{mediaFile.name}</span>
-            <button
-              type="button"
-              onClick={() => setMediaFile(null)}
-              style={styles.removeButton}
-            >
-              ✕
-            </button>
+            {mediaPreviewUrl && mediaFile.type.startsWith('video/') ? (
+              <video src={mediaPreviewUrl} style={styles.mediaPreviewAsset} controls muted loop />
+            ) : mediaPreviewUrl ? (
+              <img src={mediaPreviewUrl} alt="Forhåndsvisning" style={styles.mediaPreviewAsset} />
+            ) : null}
+            <div style={styles.mediaPreviewMeta}>
+              <span style={styles.mediaName}>{mediaFile.name}</span>
+              <button
+                type="button"
+                onClick={resetMedia}
+                style={styles.removeButton}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 
         <div style={styles.actions}>
-          <label style={styles.fileLabel}>
-            📎 Last opp bilde/video
-            <input
-              type="file"
-              accept="image/*,video/*"
-              onChange={handleFileChange}
-              style={styles.fileInput}
-              disabled={uploading}
-            />
-          </label>
+          <div style={styles.attachmentRow}>
+            <label style={styles.fileLabel}>
+              📎 Last opp bilde/video
+              <input
+                type="file"
+                accept="image/*,video/*"
+                onChange={handleFileChange}
+                style={styles.fileInput}
+                disabled={uploading || gifImporting}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsGifPickerOpen(true)}
+              style={styles.gifButton}
+              disabled={uploading || gifImporting}
+            >
+              {gifImporting ? 'Henter GIF…' : '🎞️ Velg GIF'}
+            </button>
+          </div>
 
           <button
             type="submit"
-            disabled={uploading || (!content.trim() && !mediaFile)}
+            disabled={uploading || gifImporting || (!content.trim() && !mediaFile)}
             style={styles.submitButton}
           >
             {uploading ? 'Publiserer...' : 'Publiser'}
           </button>
         </div>
       </form>
+
+      {isGifPickerOpen && (
+        <GifPicker
+          onSelect={handleGifSelect}
+          onClose={() => setIsGifPickerOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -146,12 +229,27 @@ const styles = {
   },
   mediaPreview: {
     display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '8px 12px',
+    backgroundColor: '#f7f7f7',
+    borderRadius: '8px',
+  },
+  mediaPreviewAsset: {
+    width: '100%',
+    borderRadius: '6px',
+    maxHeight: '240px',
+    objectFit: 'cover',
+  },
+  mediaPreviewMeta: {
+    display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '8px 12px',
-    backgroundColor: '#f0f0f0',
-    borderRadius: '5px',
     fontSize: '14px',
+    gap: '12px',
+  },
+  mediaName: {
+    fontWeight: 500,
   },
   removeButton: {
     background: 'none',
@@ -165,6 +263,13 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: '12px',
+  },
+  attachmentRow: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   fileLabel: {
     padding: '8px 16px',
@@ -175,6 +280,14 @@ const styles = {
   },
   fileInput: {
     display: 'none',
+  },
+  gifButton: {
+    padding: '8px 12px',
+    borderRadius: '5px',
+    border: '1px solid #ddd',
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    fontSize: '14px',
   },
   submitButton: {
     padding: '8px 24px',

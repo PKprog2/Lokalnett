@@ -60,7 +60,25 @@ export default function Bygder() {
         .eq('bygd_members.user_id', user.id)
 
       if (error) throw error
-      setBygder(data || [])
+
+      const enrichedBygder = await Promise.all(
+        (data || []).map(async (bygd) => {
+          try {
+            const { count, error: countError } = await supabase
+              .from('bygd_members')
+              .select('id', { count: 'exact', head: true })
+              .eq('bygd_id', bygd.id)
+
+            if (countError) throw countError
+            return { ...bygd, member_count: count ?? bygd.member_count }
+          } catch (countErr) {
+            console.error('Error fetching member count for bygd', bygd.id, countErr)
+            return bygd
+          }
+        })
+      )
+
+      setBygder(enrichedBygder)
     } catch (error) {
       console.error('Error fetching bygder:', error)
     } finally {
@@ -131,9 +149,12 @@ export default function Bygder() {
     navigate('/')
   }
 
-  const handleJoinBygd = async (bygdId) => {
+  const handleJoinBygd = async (bygdId, options = {}) => {
+    const { silent = false, autoNavigate = true } = options
     if (!user?.id) return
-    setJoiningBygdId(bygdId)
+    if (!silent) {
+      setJoiningBygdId(bygdId)
+    }
 
     try {
       const { error } = await supabase
@@ -147,12 +168,16 @@ export default function Bygder() {
 
       await fetchBygder()
       await fetchAllBygder()
-      navigate(`/bygd/${bygdId}`)
+      if (autoNavigate) {
+        navigate(`/bygd/${bygdId}`)
+      }
     } catch (error) {
       console.error('Error joining bygd:', error)
       alert('Kunne ikke bli med i bygda: ' + error.message)
     } finally {
-      setJoiningBygdId(null)
+      if (!silent) {
+        setJoiningBygdId(null)
+      }
     }
   }
 
@@ -162,6 +187,29 @@ export default function Bygder() {
     .join('')
     .slice(0, 2)
     .toUpperCase()
+
+  useEffect(() => {
+    if (!user?.id || loading) return
+    if (typeof window === 'undefined') return
+    const pendingBygdId = localStorage.getItem('inviteBygdId')
+    if (!pendingBygdId) return
+
+    const alreadyMember = bygder.some((bygd) => bygd.id === pendingBygdId)
+
+    const handleInvite = async () => {
+      if (alreadyMember) {
+        localStorage.removeItem('inviteBygdId')
+        navigate(`/bygd/${pendingBygdId}`)
+        return
+      }
+
+      await handleJoinBygd(pendingBygdId, { silent: true, autoNavigate: true })
+      localStorage.removeItem('inviteBygdId')
+    }
+
+    handleInvite()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, bygder, loading])
 
   const styles = getStyles(darkMode, backgroundImage)
   const memberIds = new Set(bygder.map((bygd) => bygd.id))

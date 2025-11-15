@@ -8,6 +8,7 @@ LokalNett er et sosialt nettverk for små norske bygdesamfunn. Appen lar brukere
 - ✅ **Bygd-administrasjon** - Opprett og bli med i lokale bygdesamfunn
 - ✅ **Maks 1000 medlemmer per bygd** - Holder samfunnene små og lokale
 - ✅ **Innleggsoppretting** - Del tekst, bilder og videoer
+- ✅ **GIF-støtte** - Finn og legg til Giphy-GIFer direkte i innlegg
 - ✅ **Private feeds** - Hver bygd har sin egen feed
 - ✅ **Likes og kommentarer** - Engasjer med innhold fra bygdesamfunnet
 - ✅ **Mange-til-mange relasjoner** - Brukere kan være i flere bygder
@@ -46,10 +47,11 @@ npm install
 cp .env.example .env
 ```
 
-4. Oppdater `.env` med dine Supabase-legitimasjoner:
+4. Oppdater `.env` med dine Supabase-legitimasjoner (og valgfritt en Giphy-nøkkel for GIF-søk):
 ```
 VITE_SUPABASE_URL=din-supabase-url
 VITE_SUPABASE_ANON_KEY=din-supabase-anon-key
+VITE_GIPHY_API_KEY=din-giphy-api-nokkel
 ```
 
 5. Sett opp database:
@@ -115,7 +117,8 @@ src/
 
 3. **Innleggsoppretting**
    - Skriv tekstinnlegg
-   - Last opp bilder eller videoer (maks 50MB)
+   - Last opp bilder, GIFer eller videoer (maks 50MB)
+   - Søk etter GIFer via Giphy direkte i redigeringsvinduet
    - Innlegg vises i bygdens kronologiske feed
 
 4. **Engasjement**
