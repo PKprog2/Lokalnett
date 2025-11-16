@@ -37,9 +37,14 @@ export default function Bygder() {
   const [globalLogoutStatus, setGlobalLogoutStatus] = useState(null)
   const [globalLogoutLoading, setGlobalLogoutLoading] = useState(false)
   const [copyState, setCopyState] = useState('Kopier')
+  const [isSearchActive, setIsSearchActive] = useState(false)
+  const [isCreateButtonHovered, setIsCreateButtonHovered] = useState(false)
+  const [hoveredBygdId, setHoveredBygdId] = useState(null)
   const { user, signOut, updateDisplayName, deleteAccount, signOutEverywhere } = useAuth()
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
+  const userMenuRef = useRef(null)
+  const searchRef = useRef(null)
 
   useEffect(() => {
     if (!user?.id) return
@@ -361,6 +366,28 @@ export default function Bygder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, bygder, loading])
 
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleOutsideClick = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [menuOpen])
+
+  useEffect(() => {
+    if (!isSearchActive) return
+    const handleOutsideSearchClick = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setIsSearchActive(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideSearchClick)
+    return () => document.removeEventListener('mousedown', handleOutsideSearchClick)
+  }, [isSearchActive])
+
   const styles = getStyles(darkMode, backgroundImage)
   const memberIds = new Set(bygder.map((bygd) => bygd.id))
   const getRoleForBygd = (bygd) => {
@@ -393,10 +420,7 @@ export default function Bygder() {
       />
       <header style={styles.header}>
         <h1 style={styles.title}>Mine Bygder</h1>
-        <button onClick={handleSignOut} style={styles.signOutButton}>
-          Logg ut
-        </button>
-        <div style={styles.userMenuWrapper}>
+        <div style={styles.userMenuWrapper} ref={userMenuRef}>
           <button
             style={styles.initialsButton}
             onClick={() => setMenuOpen((prev) => !prev)}
@@ -445,7 +469,7 @@ export default function Bygder() {
       <div style={styles.content}>
         <div style={styles.mainColumn}>
           <div style={styles.actionsRow}>
-            <div style={styles.inlineSearchWrapper}>
+            <div style={styles.inlineSearchWrapper} ref={searchRef}>
               <span style={styles.searchIcon}>
                 <svg
                   width="14"
@@ -465,10 +489,11 @@ export default function Bygder() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Søk etter en bygd"
+                placeholder="Finn en bygd..."
                 style={styles.inlineSearchInput}
+                onFocus={() => setIsSearchActive(true)}
               />
-              {normalizedQuery !== '' && (
+              {isSearchActive && normalizedQuery !== '' && (
                 <div style={styles.inlineSearchDropdown}>
                   {filteredSearchResults.length === 0 ? (
                     <p style={styles.searchEmpty}>Fant ingen bygder som matcher "{searchQuery}".</p>
@@ -518,7 +543,12 @@ export default function Bygder() {
 
             <button
               onClick={() => setShowCreateForm(!showCreateForm)}
-              style={styles.createButton}
+              onMouseEnter={() => setIsCreateButtonHovered(true)}
+              onMouseLeave={() => setIsCreateButtonHovered(false)}
+              style={{
+                ...styles.createButton,
+                ...(isCreateButtonHovered ? styles.createButtonHover : null),
+              }}
             >
               {showCreateForm ? 'Avbryt' : '+ Opprett ny bygd'}
             </button>
@@ -565,7 +595,12 @@ export default function Bygder() {
                 return (
                   <div
                     key={bygd.id}
-                    style={styles.bygdCard}
+                    style={{
+                      ...styles.bygdCard,
+                      ...(hoveredBygdId === bygd.id ? styles.bygdCardHover : null),
+                    }}
+                    onMouseEnter={() => setHoveredBygdId(bygd.id)}
+                    onMouseLeave={() => setHoveredBygdId(null)}
                     onClick={() => navigate(`/bygd/${bygd.id}`)}
                   >
                     <div style={styles.bygdHeader}>
@@ -780,14 +815,6 @@ const getStyles = (darkMode, backgroundImage) => {
       margin: 0,
       fontSize: '24px',
     },
-    signOutButton: {
-      padding: '8px 16px',
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '5px',
-      cursor: 'pointer',
-    },
     userMenuWrapper: {
       position: 'relative',
     },
@@ -847,19 +874,19 @@ const getStyles = (darkMode, backgroundImage) => {
       display: 'flex',
       flexWrap: 'wrap',
       gap: '12px',
-      alignItems: 'center',
-      marginBottom: '20px',
+      alignItems: 'stretch',
+      marginBottom: '24px',
     },
     inlineSearchWrapper: {
       position: 'relative',
-      flex: '0 1 240px',
-      maxWidth: '100px',
-      minWidth: '200px',
+      flex: '1 1 260px',
+      minWidth: '220px',
+      maxWidth: '200px',
     },
     searchIcon: {
       position: 'absolute',
       left: '10px',
-      top: '50%',
+      top: '47%',
       transform: 'translateY(-50%)',
       color: palette.text,
       opacity: 0.7,
@@ -882,17 +909,19 @@ const getStyles = (darkMode, backgroundImage) => {
       position: 'absolute',
       top: 'calc(100% + 6px)',
       left: 0,
-      right: 0,
+      width: '100%',
+      minWidth: '100%',
       maxHeight: '320px',
       overflowY: 'auto',
-      backgroundColor: palette.cardBg,
+      backgroundColor: '#ffffff',
+      border: '1px solid rgba(0,0,0,0.08)',
       borderRadius: '8px',
-      boxShadow: palette.cardShadow,
+      boxShadow: '0 12px 28px rgba(0,0,0,0.25)',
       padding: '12px',
       zIndex: 20,
     },
     inlineSearchResult: {
-      backgroundColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      backgroundColor: darkMode ? '#1f2933' : '#f3f4f6',
       padding: '10px',
       borderRadius: '8px',
       display: 'flex',
@@ -917,7 +946,17 @@ const getStyles = (darkMode, backgroundImage) => {
       borderRadius: '5px',
       fontSize: '16px',
       cursor: 'pointer',
-      marginBottom: '20px',
+      flex: '0 0 260px',
+      minWidth: '220px',
+      maxWidth: '320px',
+      marginBottom: 0,
+      marginLeft: 'auto',
+      textAlign: 'center',
+      transition: 'background-color 0.2s ease, filter 0.2s ease',
+    },
+    createButtonHover: {
+      backgroundColor: 'rgba(38, 81, 64, 0.95)',
+      filter: 'brightness(1.08)',
     },
     form: {
       backgroundColor: palette.cardBg,
@@ -984,7 +1023,11 @@ const getStyles = (darkMode, backgroundImage) => {
       borderRadius: '8px',
       boxShadow: palette.cardShadow,
       cursor: 'pointer',
-      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+      transition: 'transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease',
+    },
+    bygdCardHover: {
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      transform: 'translateY(0px)',
     },
     bygdHeader: {
       display: 'flex',
@@ -1024,7 +1067,7 @@ const getStyles = (darkMode, backgroundImage) => {
       borderRadius: '8px',
       boxShadow: palette.cardShadow,
       width: '100%',
-      maxWidth: '320px',
+      maxWidth: '3200px',
       backdropFilter: 'blur(10px)',
     },
     searchTitle: {
@@ -1041,9 +1084,9 @@ const getStyles = (darkMode, backgroundImage) => {
       width: '100%',
       padding: '12px',
       borderRadius: '6px',
-      border: '1px solid rgba(255,255,255,0.4)',
+      border: '1px solid rgba(255,255,255,1)',
       marginBottom: '12px',
-      backgroundColor: 'rgba(255,255,255,0.15)',
+      backgroundColor: 'rgba(255,255,255,1)',
       color: palette.text,
       fontSize: '14px',
     },
@@ -1064,10 +1107,10 @@ const getStyles = (darkMode, backgroundImage) => {
       margin: 0,
       fontSize: '14px',
       color: palette.text,
-      opacity: 0.85,
+      opacity: 0.8,
     },
     searchResult: {
-      backgroundColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      backgroundColor: darkMode ? 'rgba(255, 255, 255, 1)' : 'rgba(0,0,0,1)',
       padding: '12px',
       borderRadius: '8px',
       transition: 'transform 0.2s ease, box-shadow 0.2s ease',
