@@ -45,6 +45,15 @@ export default function Login() {
     }
   }, [])
 
+  const formatErrorMessage = (error, fallback) => {
+    if (error?.message === 'Failed to fetch') {
+      return 'Kunne ikke nå Supabase. Kontroller nettverk, brannmur/VPN og systemklokke.'
+    }
+    if (typeof error === 'string') return error
+    if (error?.message) return error.message
+    return fallback
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
@@ -64,7 +73,8 @@ export default function Login() {
         setError('Registrering vellykket! Sjekk e-posten din for bekreftelse.')
       }
     } catch (error) {
-      setError(error.message)
+      console.error('Login/signUp error:', error)
+      setError(formatErrorMessage(error, 'Noe gikk galt ved innlogging/registrering.'))
     } finally {
       setLoading(false)
     }
@@ -85,7 +95,8 @@ export default function Login() {
 
       if (error) throw error
     } catch (error) {
-      setError(error.message)
+      console.error('Social sign-in error:', error)
+      setError(formatErrorMessage(error, 'Noe gikk galt ved sosial innlogging.'))
       setSocialLoading(null)
     }
   }

@@ -444,12 +444,85 @@ export default function Bygder() {
 
       <div style={styles.content}>
         <div style={styles.mainColumn}>
-          <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            style={styles.createButton}
-          >
-            {showCreateForm ? 'Avbryt' : '+ Opprett ny bygd'}
-          </button>
+          <div style={styles.actionsRow}>
+            <div style={styles.inlineSearchWrapper}>
+              <span style={styles.searchIcon}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Søk etter en bygd"
+                style={styles.inlineSearchInput}
+              />
+              {normalizedQuery !== '' && (
+                <div style={styles.inlineSearchDropdown}>
+                  {filteredSearchResults.length === 0 ? (
+                    <p style={styles.searchEmpty}>Fant ingen bygder som matcher "{searchQuery}".</p>
+                  ) : (
+                    filteredSearchResults.map((bygd) => {
+                      const alreadyMember = memberIds.has(bygd.id)
+                      return (
+                        <div
+                          key={bygd.id}
+                          style={{
+                            ...styles.inlineSearchResult,
+                            cursor: alreadyMember ? 'pointer' : 'default',
+                            opacity: joiningBygdId === bygd.id ? 0.7 : 1,
+                          }}
+                          onClick={alreadyMember ? () => navigate(`/bygd/${bygd.id}`) : undefined}
+                        >
+                          <div>
+                            <p style={styles.searchResultName}>{bygd.name}</p>
+                            <p style={styles.searchResultMeta}>
+                              {bygd.member_count} medlemmer
+                              {alreadyMember && <span style={styles.memberPill}>Allerede medlem</span>}
+                            </p>
+                          </div>
+                          {!alreadyMember && (
+                            <button
+                              style={{
+                                ...styles.joinButton,
+                                opacity: joiningBygdId === bygd.id ? 0.6 : 1,
+                                cursor: joiningBygdId === bygd.id ? 'not-allowed' : 'pointer',
+                              }}
+                              disabled={joiningBygdId === bygd.id}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleJoinBygd(bygd.id)
+                              }}
+                            >
+                              {joiningBygdId === bygd.id ? 'Blir med...' : 'Bli med'}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              style={styles.createButton}
+            >
+              {showCreateForm ? 'Avbryt' : '+ Opprett ny bygd'}
+            </button>
+          </div>
 
           {showCreateForm && (
             <form onSubmit={createBygd} style={styles.form}>
@@ -515,70 +588,6 @@ export default function Bygder() {
             </div>
           )}
         </div>
-
-        <aside style={styles.sideColumn}>
-          <div style={styles.searchCard}>
-            <h2 style={styles.searchTitle}>Finn bygder</h2>
-            <p style={styles.searchHint}>Søk etter nye fellesskap og se hvor mange medlemmer de har.</p>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Søk etter bygder..."
-              style={styles.searchInput}
-            />
-            <div style={styles.searchResults}>
-              {normalizedQuery === '' ? (
-                <p style={styles.searchPlaceholder}>Begynn å skrive for å se forslag.</p>
-              ) : filteredSearchResults.length === 0 ? (
-                <p style={styles.searchEmpty}>Fant ingen bygder som matcher "{searchQuery}".</p>
-              ) : (
-                filteredSearchResults.map((bygd) => {
-                  const alreadyMember = memberIds.has(bygd.id)
-
-                  return (
-                    <div
-                      key={bygd.id}
-                      style={{
-                        ...styles.searchResult,
-                        cursor: alreadyMember ? 'pointer' : 'default',
-                        opacity: joiningBygdId === bygd.id ? 0.7 : 1,
-                      }}
-                      onClick={alreadyMember ? () => navigate(`/bygd/${bygd.id}`) : undefined}
-                    >
-                      <div>
-                        <p style={styles.searchResultName}>{bygd.name}</p>
-                        <p style={styles.searchResultMeta}>
-                          {bygd.member_count} medlemmer
-                          {alreadyMember && (
-                            <span style={styles.memberPill}>Allerede medlem</span>
-                          )}
-                        </p>
-                      </div>
-
-                      {!alreadyMember && (
-                        <button
-                          style={{
-                            ...styles.joinButton,
-                            opacity: joiningBygdId === bygd.id ? 0.6 : 1,
-                            cursor: joiningBygdId === bygd.id ? 'not-allowed' : 'pointer',
-                          }}
-                          disabled={joiningBygdId === bygd.id}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleJoinBygd(bygd.id)
-                          }}
-                        >
-                          {joiningBygdId === bygd.id ? 'Blir med...' : 'Bli med'}
-                        </button>
-                      )}
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-        </aside>
       </div>
 
       {isSettingsOpen && (
@@ -829,17 +838,68 @@ const getStyles = (darkMode, backgroundImage) => {
       margin: '0 auto',
       padding: '20px',
       width: 'calc(100% - 8px)',
-      gap: '24px',
-      alignItems: 'flex-start',
-      flexWrap: 'wrap',
     },
     mainColumn: {
-      flex: '2 1 560px',
+      flex: '1 1 100%',
       minWidth: '280px',
     },
-    sideColumn: {
-      flex: '1 1 280px',
-      minWidth: '260px',
+    actionsRow: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '12px',
+      alignItems: 'center',
+      marginBottom: '20px',
+    },
+    inlineSearchWrapper: {
+      position: 'relative',
+      flex: '0 1 240px',
+      maxWidth: '100px',
+      minWidth: '200px',
+    },
+    searchIcon: {
+      position: 'absolute',
+      left: '10px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      color: palette.text,
+      opacity: 0.7,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      pointerEvents: 'none',
+    },
+    inlineSearchInput: {
+      width: '100%',
+      padding: '10px 10px 10px 34px',
+      borderRadius: '6px',
+      border: '1px solid rgba(255,255,255,0.35)',
+      backgroundColor: 'rgba(232, 232, 232, 1)',
+      color: palette.text,
+      fontSize: '14px',
+      lineHeight: 1.4,
+    },
+    inlineSearchDropdown: {
+      position: 'absolute',
+      top: 'calc(100% + 6px)',
+      left: 0,
+      right: 0,
+      maxHeight: '320px',
+      overflowY: 'auto',
+      backgroundColor: palette.cardBg,
+      borderRadius: '8px',
+      boxShadow: palette.cardShadow,
+      padding: '12px',
+      zIndex: 20,
+    },
+    inlineSearchResult: {
+      backgroundColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      padding: '10px',
+      borderRadius: '8px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '12px',
+      marginBottom: '8px',
     },
     loading: {
       display: 'flex',
@@ -964,14 +1024,15 @@ const getStyles = (darkMode, backgroundImage) => {
       borderRadius: '8px',
       boxShadow: palette.cardShadow,
       width: '100%',
+      maxWidth: '320px',
       backdropFilter: 'blur(10px)',
     },
     searchTitle: {
-      margin: '0 0 8px 0',
+      margin: 0,
       fontSize: '20px',
     },
     searchHint: {
-      margin: '0 0 12px 0',
+      margin: 0,
       fontSize: '14px',
       color: palette.text,
       opacity: 0.85,
@@ -1261,6 +1322,11 @@ const getStyles = (darkMode, backgroundImage) => {
       backgroundColor: '#b91c1c',
       color: '#fff',
       cursor: 'pointer',
+    },
+    searchBarSection: {
+      display: 'flex',
+      justifyContent: 'center',
+      padding: '16px 20px 0',
     },
   }
 }
