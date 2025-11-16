@@ -99,6 +99,32 @@ button:focus-visible {
   color: #fff;
 }
 
+.user-name-hover {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-name-message-button {
+  border: 1px solid #d3d6db;
+  border-radius: 14px;
+  background-color: #fff;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.user-name-hover:hover .user-name-message-button,
+.user-name-hover:focus-within .user-name-message-button {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;

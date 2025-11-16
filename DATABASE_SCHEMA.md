@@ -256,10 +256,14 @@ CREATE TABLE comments (
   post_id UUID REFERENCES posts(id) ON DELETE CASCADE NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   content TEXT NOT NULL,
+  gif_url TEXT,
   parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Existing prosjekter kan legge til kolonnen slik:
+-- ALTER TABLE comments ADD COLUMN IF NOT EXISTS gif_url TEXT;
 
 -- Enable RLS
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
@@ -341,6 +345,90 @@ CREATE POLICY "Users can like comments"
 CREATE POLICY "Users can remove own comment likes" 
   ON comment_likes FOR DELETE 
   USING (auth.uid() = user_id);
+```
+
+### direct_conversations
+Pairs two distinct users before messages are inserted. `participant_a` and `participant_b` are stored in lexicographical order to guarantee uniqueness.
+
+```sql
+CREATE TABLE direct_conversations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  participant_a UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  participant_b UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_message_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT participant_order CHECK (participant_a < participant_b),
+  UNIQUE(participant_a, participant_b)
+);
+
+ALTER TABLE direct_conversations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Participants can view conversations"
+  ON direct_conversations FOR SELECT
+  USING (participant_a = auth.uid() OR participant_b = auth.uid());
+
+CREATE POLICY "Participants can insert conversations"
+  ON direct_conversations FOR INSERT
+  WITH CHECK (
+    (participant_a = auth.uid() OR participant_b = auth.uid())
+    AND participant_a <> participant_b
+  );
+
+CREATE POLICY "Participants can update own conversations"
+  ON direct_conversations FOR UPDATE
+  USING (participant_a = auth.uid() OR participant_b = auth.uid());
+```
+
+### direct_messages
+Stores all 1:1 chat messages. `read_at` is nullable and set when the recipient opens the thread.
+
+```sql
+CREATE TABLE direct_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  conversation_id UUID REFERENCES direct_conversations(id) ON DELETE CASCADE NOT NULL,
+  sender_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  recipient_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  content TEXT NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX direct_messages_conversation_idx
+  ON direct_messages (conversation_id, created_at);
+
+ALTER TABLE direct_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Participants can read direct messages"
+  ON direct_messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM direct_conversations
+      WHERE direct_conversations.id = direct_messages.conversation_id
+        AND (
+          direct_conversations.participant_a = auth.uid()
+          OR direct_conversations.participant_b = auth.uid()
+        )
+    )
+  );
+
+CREATE POLICY "Participants can send direct messages"
+  ON direct_messages FOR INSERT
+  WITH CHECK (
+    sender_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM direct_conversations
+      WHERE direct_conversations.id = direct_messages.conversation_id
+        AND (
+          direct_conversations.participant_a = auth.uid()
+          OR direct_conversations.participant_b = auth.uid()
+        )
+    )
+  );
+
+CREATE POLICY "Recipients can mark messages as read"
+  ON direct_messages FOR UPDATE
+  USING (recipient_id = auth.uid())
+  WITH CHECK (recipient_id = auth.uid());
 ```
 
 ## Functions

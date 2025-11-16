@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../utils/supabaseClient'
 import Comments from './Comments'
+import UserNameWithMessage from './UserNameWithMessage'
+import { useDirectMessaging } from '../contexts/DirectMessageContext'
 
 export default function Post({ post, currentUserId, onUpdate, canModerate = false }) {
   const [showComments, setShowComments] = useState((post.comments_count || 0) > 0)
@@ -9,6 +11,7 @@ export default function Post({ post, currentUserId, onUpdate, canModerate = fals
   const [likeUsers, setLikeUsers] = useState(post.likes || [])
   const [deleting, setDeleting] = useState(false)
   const canDelete = post.user_id === currentUserId || canModerate
+  const messaging = useDirectMessaging()
 
   useEffect(() => {
     // Check if current user has liked this post
@@ -206,7 +209,13 @@ export default function Post({ post, currentUserId, onUpdate, canModerate = fals
             )}
           </div>
           <div>
-            <div style={styles.displayName}>{post.profiles?.display_name || 'Ukjent'}</div>
+            <UserNameWithMessage
+              style={styles.displayName}
+              userId={post.user_id}
+              currentUserId={currentUserId}
+              displayName={post.profiles?.display_name || 'Ukjent'}
+              onMessage={messaging?.openConversationWithUser}
+            />
             <div style={styles.timestamp}>{formatDate(post.created_at)}</div>
           </div>
         </div>

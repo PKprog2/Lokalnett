@@ -59,12 +59,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
    - **posts table** - User posts
    - **likes table** - Post likes
    - **comments table** - Post comments
+   - **direct_conversations table** - Parring av to brukere før en chat
+   - **direct_messages table** - Selve meldingene i samtalene
    - **Triggers** - For automatic count updates
    - **Storage buckets** - For media and avatars
 
 4. Verify tables are created:
    - Go to Table Editor
-   - You should see: profiles, bygder, bygd_members, posts, likes, comments
+   - You should see: profiles, bygder, bygd_members, posts, likes, comments, direct_conversations, direct_messages
 
 5. Verify storage buckets:
    - Go to Storage
@@ -124,6 +126,10 @@ The app will be available at http://localhost:5173
 4. **Test engagement**:
    - Like your post by clicking the heart icon
    - Add a comment
+
+5. **Test direktemeldinger**:
+   - Hold musepekeren over navnet til en annen bruker i feeden og klikk «Meld»
+   - Sjekk at innboksen (øverst til høyre) viser samtalen og at meldinger kan sendes begge veier
 
 ### 9. Build for Production
 

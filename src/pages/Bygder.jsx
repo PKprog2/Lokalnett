@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useDirectMessaging } from '../contexts/DirectMessageContext'
 import { supabase } from '../utils/supabaseClient'
 import { useNavigate } from 'react-router-dom'
 
@@ -41,6 +42,7 @@ export default function Bygder() {
   const [isCreateButtonHovered, setIsCreateButtonHovered] = useState(false)
   const [hoveredBygdId, setHoveredBygdId] = useState(null)
   const { user, signOut, updateDisplayName, deleteAccount, signOutEverywhere } = useAuth()
+  const messaging = useDirectMessaging()
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
   const userMenuRef = useRef(null)
@@ -439,6 +441,16 @@ export default function Bygder() {
                 onClick={handleSettingsOpen}
               >
                 Innstillinger
+              </button>
+              <button
+                className="user-menu-item"
+                style={styles.menuItem}
+                onClick={() => {
+                  messaging.openInbox()
+                  setMenuOpen(false)
+                }}
+              >
+                Direktemeldinger
               </button>
               <button
                 className="user-menu-item"

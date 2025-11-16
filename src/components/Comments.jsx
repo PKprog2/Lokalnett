@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../utils/supabaseClient'
+import GifPicker from './GifPicker'
+import UserNameWithMessage from './UserNameWithMessage'
+import { useDirectMessaging } from '../contexts/DirectMessageContext'
 
 const DEFAULT_VISIBLE = 2
 
@@ -13,14 +16,22 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
   const [replyTarget, setReplyTarget] = useState(null)
   const [expandedReplies, setExpandedReplies] = useState({})
   const [deletingCommentIds, setDeletingCommentIds] = useState({})
+  const [isGifPickerOpen, setIsGifPickerOpen] = useState(false)
+  const [gifImporting, setGifImporting] = useState(false)
+  const [gifFile, setGifFile] = useState(null)
+  const [gifPreviewUrl, setGifPreviewUrl] = useState(null)
   const commentInputRef = useRef(null)
   const commentsRef = useRef([])
+  const messaging = useDirectMessaging()
 
   useEffect(() => {
     setVisibleRootCount(DEFAULT_VISIBLE)
     setReplyTarget(null)
     setNewComment('')
     setExpandedReplies({})
+    setGifFile(null)
+    setGifPreviewUrl(null)
+    setIsGifPickerOpen(false)
   }, [postId])
 
   useEffect(() => {
@@ -131,6 +142,23 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
     setLoading(true)
 
     try {
+      let gifUrl = null
+      if (gifFile) {
+        const extension = gifFile.name.split('.').pop()
+  const storagePath = `${currentUserId}/comments/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
+        const { error: uploadError } = await supabase.storage
+          .from('media')
+          .upload(storagePath, gifFile)
+
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage
+          .from('media')
+          .getPublicUrl(storagePath)
+
+        gifUrl = urlData.publicUrl
+      }
+
       const { data: insertedComment, error } = await supabase
         .from('comments')
         .insert([
@@ -139,6 +167,7 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
             user_id: currentUserId,
             content: trimmed,
             parent_comment_id: replyTarget?.id || null,
+            gif_url: gifUrl,
           },
         ])
         .select('*')
@@ -181,6 +210,8 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
 
       setNewComment('')
       setReplyTarget(null)
+      setGifFile(null)
+      setGifPreviewUrl(null)
       onUpdate?.()
     } catch (error) {
       console.error('Error creating comment:', error)
@@ -237,6 +268,38 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
     } finally {
       setLikeBusyMap((prev) => ({ ...prev, [commentId]: false }))
     }
+  }
+
+  const handleGifSelect = async (gif) => {
+    if (!gif?.url) return
+    setIsGifPickerOpen(false)
+    setGifImporting(true)
+    try {
+      const response = await fetch(gif.url)
+      if (!response.ok) {
+        throw new Error('Kunne ikke hente GIF-data.')
+      }
+      const blob = await response.blob()
+      if (!blob.size) {
+        throw new Error('GIF-en inneholder ingen data.')
+      }
+      const extension = (gif.url.split('.').pop() || 'gif').split('?')[0]
+      const file = new File([blob], `comment-gif-${Date.now()}.${extension}`, {
+        type: blob.type || 'image/gif',
+      })
+      setGifFile(file)
+      setGifPreviewUrl(gif.previewUrl || gif.url)
+    } catch (error) {
+      console.error('Error importing GIF for comment:', error)
+      alert('Kunne ikke hente GIF. Prøv igjen litt senere.')
+    } finally {
+      setGifImporting(false)
+    }
+  }
+
+  const handleRemoveGif = () => {
+    setGifFile(null)
+    setGifPreviewUrl(null)
   }
 
   const collectDescendantIds = (targetId) => {
@@ -371,10 +434,21 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
         <div style={styles.commentBody}>
           <div style={styles.commentBubble}>
             <div style={styles.commentHeader}>
-              <span style={styles.commentAuthor}>{comment.profiles?.display_name || 'Ukjent'}</span>
+              <UserNameWithMessage
+                style={styles.commentAuthor}
+                userId={comment.user_id}
+                currentUserId={currentUserId}
+                displayName={comment.profiles?.display_name || 'Ukjent'}
+                onMessage={messaging?.openConversationWithUser}
+              />
               <span style={styles.commentTime}>{formatDate(comment.created_at)}</span>
             </div>
-            <p style={styles.commentText}>{comment.content}</p>
+            {comment.content && <p style={styles.commentText}>{comment.content}</p>}
+            {comment.gif_url && (
+              <div style={styles.commentGifWrapper}>
+                <img src={comment.gif_url} alt="GIF" style={styles.commentGif} loading="lazy" />
+              </div>
+            )}
           </div>
           <div style={styles.commentFooter}>
             <button
@@ -459,22 +533,44 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
       )}
 
       <form onSubmit={handleSubmit} style={styles.form}>
-        <input
-          ref={commentInputRef}
-          type="text"
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          placeholder="Skriv en kommentar..."
-          style={styles.input}
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          disabled={loading || !newComment.trim()}
-          style={styles.submitButton}
-        >
-          {loading ? '...' : 'Send'}
-        </button>
+        <div style={styles.inputRow}>
+          <input
+            ref={commentInputRef}
+            type="text"
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Skriv en kommentar..."
+            style={styles.input}
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading || gifImporting || !newComment.trim()}
+            style={styles.submitButton}
+          >
+            {loading ? '...' : 'Send'}
+          </button>
+        </div>
+
+        {gifPreviewUrl && (
+          <div style={styles.gifPreview}>
+            <img src={gifPreviewUrl} alt="Valgt GIF" style={styles.gifPreviewImage} />
+            <button type="button" style={styles.removeGifButton} onClick={handleRemoveGif}>
+              Fjern GIF
+            </button>
+          </div>
+        )}
+
+        <div style={styles.formFooter}>
+          <button
+            type="button"
+            style={styles.gifButton}
+            onClick={() => setIsGifPickerOpen(true)}
+            disabled={loading || gifImporting}
+          >
+            {gifImporting ? 'Henter GIF…' : gifPreviewUrl ? 'Bytt GIF' : 'Legg til GIF'}
+          </button>
+        </div>
       </form>
       {replyTarget && (
         <div style={styles.replyBanner}>
@@ -483,6 +579,12 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
             Avbryt
           </button>
         </div>
+      )}
+      {isGifPickerOpen && (
+        <GifPicker
+          onSelect={handleGifSelect}
+          onClose={() => setIsGifPickerOpen(false)}
+        />
       )}
     </div>
   )
@@ -593,16 +695,22 @@ const styles = {
     fontSize: '11px',
     fontWeight: 600,
   },
-  form: {
-    display: 'flex',
-    gap: '8px',
-  },
   input: {
     flex: 1,
     padding: '8px 12px',
     border: '1px solid #ddd',
     borderRadius: '20px',
     fontSize: '14px',
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  inputRow: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'stretch',
   },
   submitButton: {
     padding: '8px 16px',
@@ -671,6 +779,50 @@ const styles = {
     cursor: 'pointer',
     padding: 0,
     marginTop: '4px',
+  },
+  formFooter: {
+    display: 'flex',
+    justifyContent: 'flex-start',
+  },
+  gifButton: {
+    border: '1px solid #d3d6db',
+    backgroundColor: '#fff',
+    borderRadius: '20px',
+    padding: '6px 14px',
+    fontSize: '13px',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  gifPreview: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '8px 12px',
+    backgroundColor: '#f7f7f7',
+    borderRadius: '16px',
+  },
+  gifPreviewImage: {
+    width: '120px',
+    height: '80px',
+    objectFit: 'cover',
+    borderRadius: '12px',
+  },
+  removeGifButton: {
+    border: 'none',
+    background: 'none',
+    color: '#c33',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  commentGifWrapper: {
+    marginTop: '8px',
+    borderRadius: '12px',
+    overflow: 'hidden',
+    maxWidth: '220px',
+  },
+  commentGif: {
+    width: '100%',
+    display: 'block',
   },
 }
 
