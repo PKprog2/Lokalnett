@@ -401,6 +401,9 @@ export default function Bygder() {
   const filteredSearchResults = normalizedQuery
     ? allBygder.filter((bygd) => bygd.name?.toLowerCase().includes(normalizedQuery))
     : []
+  const unreadCount = messaging?.unreadCount ?? 0
+  const hasUnreadMessages = unreadCount > 0
+  const unreadDisplay = unreadCount > 99 ? '99+' : `${unreadCount}`
 
   if (loading) {
     return <div style={styles.loading}>Laster...</div>
@@ -423,12 +426,15 @@ export default function Bygder() {
       <header style={styles.header}>
         <h1 style={styles.title}>Mine Bygder</h1>
         <div style={styles.userMenuWrapper} ref={userMenuRef}>
-          <button
-            style={styles.initialsButton}
-            onClick={() => setMenuOpen((prev) => !prev)}
-          >
-            {initials}
-          </button>
+          <div style={styles.initialsButtonWrapper}>
+            <button
+              style={styles.initialsButton}
+              onClick={() => setMenuOpen((prev) => !prev)}
+            >
+              {initials}
+            </button>
+            {hasUnreadMessages && <span style={styles.unreadBadge}>{unreadDisplay}</span>}
+          </div>
           {menuOpen && (
             <div
               style={styles.userMenu}
@@ -444,13 +450,17 @@ export default function Bygder() {
               </button>
               <button
                 className="user-menu-item"
-                style={styles.menuItem}
+                style={{
+                  ...styles.menuItem,
+                  ...(hasUnreadMessages ? styles.menuItemWithBadge : null),
+                }}
                 onClick={() => {
                   messaging.openInbox()
                   setMenuOpen(false)
                 }}
               >
-                Direktemeldinger
+                <span>Direktemeldinger</span>
+                {hasUnreadMessages && <span style={styles.menuBadge}>{unreadDisplay}</span>}
               </button>
               <button
                 className="user-menu-item"
@@ -830,6 +840,10 @@ const getStyles = (darkMode, backgroundImage) => {
     userMenuWrapper: {
       position: 'relative',
     },
+    initialsButtonWrapper: {
+      position: 'relative',
+      display: 'inline-flex',
+    },
     initialsButton: {
       width: '42px',
       height: '42px',
@@ -845,6 +859,23 @@ const getStyles = (darkMode, backgroundImage) => {
       lineHeight: 1,
       fontSize: '14px',
       textTransform: 'uppercase',
+    },
+    unreadBadge: {
+      position: 'absolute',
+      top: '-4px',
+      right: '-4px',
+      backgroundColor: '#ff4d4f',
+      color: '#fff',
+      borderRadius: '999px',
+      fontSize: '10px',
+      fontWeight: 700,
+      padding: '2px 5px',
+      minWidth: '18px',
+      lineHeight: 1.1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
     },
     userMenu: {
       position: 'absolute',
@@ -871,6 +902,23 @@ const getStyles = (darkMode, backgroundImage) => {
       width: '100%',
       margin: '2px 4px',
       transition: 'background-color 0.15s ease, color 0.15s ease',
+    },
+    menuItemWithBadge: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '10px',
+    },
+    menuBadge: {
+      backgroundColor: '#ff4d4f',
+      color: '#fff',
+      borderRadius: '999px',
+      fontSize: '11px',
+      fontWeight: 600,
+      padding: '2px 7px',
+      minWidth: '22px',
+      textAlign: 'center',
+      lineHeight: 1.2,
     },
     content: {
       maxWidth: '1100px',

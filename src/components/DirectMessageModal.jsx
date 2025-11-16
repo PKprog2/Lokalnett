@@ -19,7 +19,7 @@ const formatRelativeTime = (timestamp) => {
   return date.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })
 }
 
-export default function DirectMessageModal({ open, onClose, initialTarget, clearInitialTarget }) {
+export default function DirectMessageModal({ open, onClose, initialTarget, clearInitialTarget, refreshUnreadCount }) {
   const { user } = useAuth()
   const [conversations, setConversations] = useState([])
   const [loadingConversations, setLoadingConversations] = useState(false)
@@ -153,13 +153,31 @@ export default function DirectMessageModal({ open, onClose, initialTarget, clear
         .is('read_at', null)
         .eq('conversation_id', conversationId)
         .eq('recipient_id', user.id)
+
+      await refreshUnreadCount?.()
     } catch (error) {
       console.error('Error loading messages:', error)
       setErrorText('Kunne ikke laste meldinger.')
     } finally {
       setLoadingMessages(false)
     }
-  }, [user?.id])
+  }, [refreshUnreadCount, user?.id])
+
+  const markAllAsRead = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const { error } = await supabase
+        .from('direct_messages')
+        .update({ read_at: new Date().toISOString() })
+        .is('read_at', null)
+        .eq('recipient_id', user.id)
+
+      if (error) throw error
+      await refreshUnreadCount?.()
+    } catch (error) {
+      console.error('Error marking all messages as read:', error)
+    }
+  }, [refreshUnreadCount, user?.id])
 
   const ensureConversation = useCallback(async (targetUser) => {
     if (!user?.id || !targetUser?.id || targetUser.id === user.id) return null
@@ -234,6 +252,11 @@ export default function DirectMessageModal({ open, onClose, initialTarget, clear
     if (!open) return
     fetchConversations()
   }, [fetchConversations, open])
+
+  useEffect(() => {
+    if (!open) return
+    markAllAsRead()
+  }, [markAllAsRead, open])
 
   useEffect(() => {
     if (!open || !initialTarget) return
