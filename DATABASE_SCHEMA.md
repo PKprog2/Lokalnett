@@ -104,6 +104,62 @@ CREATE POLICY "Users can leave bygder"
   USING (auth.uid() = user_id);
 ```
 
+### bygd_roles
+Stores elevated permissions (owner/moderator) per bygd. Owners are already tracked via `bygder.created_by`, but a matching row in this table makes it easy to expose in the UI and to promote additional moderators.
+
+```sql
+CREATE TABLE bygd_roles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  bygd_id UUID REFERENCES bygder(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('owner', 'moderator')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(bygd_id, user_id)
+);
+
+ALTER TABLE bygd_roles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Members can view bygd roles"
+  ON bygd_roles FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM bygd_members
+      WHERE bygd_members.bygd_id = bygd_roles.bygd_id
+      AND bygd_members.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Owners can assign roles"
+  ON bygd_roles FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM bygder
+      WHERE bygder.id = bygd_roles.bygd_id
+      AND bygder.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Owners can update roles"
+  ON bygd_roles FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM bygder
+      WHERE bygder.id = bygd_roles.bygd_id
+      AND bygder.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Owners can revoke roles"
+  ON bygd_roles FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM bygder
+      WHERE bygder.id = bygd_roles.bygd_id
+      AND bygder.created_by = auth.uid()
+    )
+  );
+```
+
 ### posts
 Posts within bygder.
 
@@ -348,6 +404,39 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER post_comments_count_trigger
 AFTER INSERT OR DELETE ON comments
 FOR EACH ROW EXECUTE FUNCTION update_post_comments_count();
+```
+
+### delete_user_account helper
+Allows an authenticated user to wipe their own data (memberships, innhold og konto) via the `delete_user_account` RPC used by the frontend settings-dialog.
+
+```sql
+CREATE OR REPLACE FUNCTION delete_user_account()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  target uuid := auth.uid();
+BEGIN
+  IF target IS NULL THEN
+    RAISE EXCEPTION 'Ingen aktiv bruker i sesjonen.';
+  END IF;
+
+  DELETE FROM bygd_roles WHERE user_id = target;
+  DELETE FROM bygd_members WHERE user_id = target;
+  DELETE FROM likes WHERE user_id = target;
+  DELETE FROM comment_likes WHERE user_id = target;
+  DELETE FROM comments WHERE user_id = target;
+  DELETE FROM posts WHERE user_id = target;
+  DELETE FROM profiles WHERE id = target;
+
+  PERFORM auth.delete_user(target);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION delete_user_account() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION delete_user_account() TO authenticated;
 ```
 
 ## Storage Buckets

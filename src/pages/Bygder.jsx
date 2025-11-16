@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../utils/supabaseClient'
 import { useNavigate } from 'react-router-dom'
@@ -26,7 +26,18 @@ export default function Bygder() {
   const [allBygder, setAllBygder] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [joiningBygdId, setJoiningBygdId] = useState(null)
-  const { user, signOut } = useAuth()
+  const [roleMap, setRoleMap] = useState({})
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [displayNameInput, setDisplayNameInput] = useState('')
+  const [displayNameStatus, setDisplayNameStatus] = useState(null)
+  const [savingDisplayName, setSavingDisplayName] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deleteStatus, setDeleteStatus] = useState(null)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [globalLogoutStatus, setGlobalLogoutStatus] = useState(null)
+  const [globalLogoutLoading, setGlobalLogoutLoading] = useState(false)
+  const [copyState, setCopyState] = useState('Kopier')
+  const { user, signOut, updateDisplayName, deleteAccount, signOutEverywhere } = useAuth()
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
 
@@ -36,6 +47,35 @@ export default function Bygder() {
     fetchAllBygder()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  const fetchRoleMap = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const { data, error } = await supabase
+        .from('bygd_roles')
+        .select('bygd_id, role')
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      const map = {}
+      for (const entry of data || []) {
+        map[entry.bygd_id] = entry.role
+      }
+      setRoleMap(map)
+    } catch (error) {
+      console.error('Error fetching roles for bygder:', error)
+      setRoleMap({})
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      setRoleMap({})
+      return
+    }
+    fetchRoleMap()
+  }, [fetchRoleMap, user?.id])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -48,6 +88,15 @@ export default function Bygder() {
       localStorage.setItem('bygdDarkMode', darkMode)
     }
   }, [darkMode])
+
+  useEffect(() => {
+    if (!user) {
+      setDisplayNameInput('')
+      return
+    }
+    const fallbackName = user.user_metadata?.display_name || user.email?.split('@')[0] || ''
+    setDisplayNameInput(fallbackName)
+  }, [user])
 
   const fetchBygder = async () => {
     try {
@@ -100,6 +149,8 @@ export default function Bygder() {
     }
   }
 
+  
+
   const createBygd = async (e) => {
     e.preventDefault()
     try {
@@ -121,6 +172,7 @@ export default function Bygder() {
       setNewBygdDescription('')
       setShowCreateForm(false)
       fetchBygder()
+      fetchRoleMap()
     } catch (error) {
       console.error('Error creating bygd:', error)
       alert('Kunne ikke opprette bygd: ' + error.message)
@@ -168,6 +220,7 @@ export default function Bygder() {
 
       await fetchBygder()
       await fetchAllBygder()
+      fetchRoleMap()
       if (autoNavigate) {
         navigate(`/bygd/${bygdId}`)
       }
@@ -180,6 +233,103 @@ export default function Bygder() {
       }
     }
   }
+
+  const handleSettingsOpen = () => {
+    setMenuOpen(false)
+    setDisplayNameStatus(null)
+    setDeleteStatus(null)
+    setIsSettingsOpen(true)
+  }
+
+  const handleCloseSettings = () => {
+    setIsSettingsOpen(false)
+    setDisplayNameStatus(null)
+    setDeleteStatus(null)
+    setDeleteConfirmation('')
+  }
+
+  const handleDisplayNameSave = async () => {
+    setDisplayNameStatus(null)
+    const trimmed = displayNameInput.trim()
+    if (!trimmed) {
+      setDisplayNameStatus({ type: 'error', text: 'Visningsnavn kan ikke være tomt.' })
+      return
+    }
+
+    setSavingDisplayName(true)
+    const { error } = await updateDisplayName(trimmed)
+    if (error) {
+      setDisplayNameStatus({ type: 'error', text: error.message })
+    } else {
+      setDisplayNameStatus({ type: 'success', text: 'Visningsnavn oppdatert.' })
+    }
+    setSavingDisplayName(false)
+  }
+
+  const handleAccountDeletion = async () => {
+    if (deleteConfirmation !== 'SLETT') return
+    setDeletingAccount(true)
+    setDeleteStatus(null)
+    const { error } = await deleteAccount()
+    if (error) {
+      const message = error.message?.includes('delete_user_account')
+        ? 'Manglende databasefunksjon. Se DATABASE_SCHEMA.md for hvordan den opprettes.'
+        : error.message
+      setDeleteStatus({ type: 'error', text: message || 'Kunne ikke slette konto.' })
+      setDeletingAccount(false)
+      return
+    }
+    setDeleteStatus({ type: 'success', text: 'Kontoen er slettet. Vi sender deg til forsiden…' })
+    setTimeout(() => navigate('/'), 1200)
+  }
+
+  const handleGlobalLogout = async () => {
+    setGlobalLogoutLoading(true)
+    setGlobalLogoutStatus(null)
+    const { error } = await signOutEverywhere()
+    if (error) {
+      setGlobalLogoutStatus({ type: 'error', text: error.message })
+    } else {
+      setGlobalLogoutStatus({ type: 'success', text: 'Du er logget ut på alle enheter.' })
+      setTimeout(() => navigate('/'), 800)
+    }
+    setGlobalLogoutLoading(false)
+  }
+
+  const handleCopyUserId = async () => {
+    if (!user?.id || typeof navigator === 'undefined' || !navigator.clipboard) return
+    try {
+      await navigator.clipboard.writeText(user.id)
+      setCopyState('Kopiert!')
+    } catch (error) {
+      console.error('Kunne ikke kopiere bruker-ID', error)
+      setCopyState('Kunne ikke kopiere')
+    } finally {
+      setTimeout(() => setCopyState('Kopier'), 2000)
+    }
+  }
+
+  const handleResetBackground = () => {
+    setBackgroundImage(defaultBackground)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bygdBackground', defaultBackground)
+    }
+  }
+
+  const providerKey = user?.app_metadata?.provider || 'email'
+  const providerLabelMap = {
+    email: 'E-post og passord',
+    google: 'Google',
+    azure: 'Microsoft',
+    apple: 'Apple'
+  }
+  const providerLabel = providerLabelMap[providerKey] || providerKey
+  const lastSignInFormatted = user?.last_sign_in_at
+    ? new Date(user.last_sign_in_at).toLocaleString('nb-NO', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : 'Ukjent'
 
   const initials = (user?.user_metadata?.display_name || user?.email || '?')
     .split(' ')
@@ -213,6 +363,11 @@ export default function Bygder() {
 
   const styles = getStyles(darkMode, backgroundImage)
   const memberIds = new Set(bygder.map((bygd) => bygd.id))
+  const getRoleForBygd = (bygd) => {
+    if (!bygd) return null
+    if (bygd.created_by === user?.id) return 'owner'
+    return roleMap[bygd.id] || null
+  }
   const normalizedQuery = searchQuery.trim().toLowerCase()
   const filteredSearchResults = normalizedQuery
     ? allBygder.filter((bygd) => bygd.name?.toLowerCase().includes(normalizedQuery))
@@ -250,6 +405,12 @@ export default function Bygder() {
           </button>
           {menuOpen && (
             <div style={styles.userMenu}>
+              <button
+                style={styles.menuItem}
+                onClick={handleSettingsOpen}
+              >
+                Innstillinger
+              </button>
               <button
                 style={styles.menuItem}
                 onClick={() => fileInputRef.current?.click()}
@@ -314,21 +475,32 @@ export default function Bygder() {
             </div>
           ) : (
             <div style={styles.bygderList}>
-              {bygder.map((bygd) => (
-                <div
-                  key={bygd.id}
-                  style={styles.bygdCard}
-                  onClick={() => navigate(`/bygd/${bygd.id}`)}
-                >
-                  <h3 style={styles.bygdName}>{bygd.name}</h3>
-                  {bygd.description && (
-                    <p style={styles.bygdDescription}>{bygd.description}</p>
-                  )}
-                  <div style={styles.bygdStats}>
-                    <span>{bygd.member_count} / {bygd.max_members} medlemmer</span>
+              {bygder.map((bygd) => {
+                const role = getRoleForBygd(bygd)
+
+                return (
+                  <div
+                    key={bygd.id}
+                    style={styles.bygdCard}
+                    onClick={() => navigate(`/bygd/${bygd.id}`)}
+                  >
+                    <div style={styles.bygdHeader}>
+                      <h3 style={styles.bygdName}>{bygd.name}</h3>
+                      {role && (
+                        <span style={styles.roleBadge(role)}>
+                          {role === 'owner' ? 'Eier' : 'Moderator'}
+                        </span>
+                      )}
+                    </div>
+                    {bygd.description && (
+                      <p style={styles.bygdDescription}>{bygd.description}</p>
+                    )}
+                    <div style={styles.bygdStats}>
+                      <span>{bygd.member_count} / {bygd.max_members} medlemmer</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -397,6 +569,162 @@ export default function Bygder() {
           </div>
         </aside>
       </div>
+
+      {isSettingsOpen && (
+        <div style={styles.settingsOverlay}>
+          <div style={styles.settingsModal}>
+            <div style={styles.settingsHeader}>
+              <div>
+                <h2 style={styles.settingsTitle}>Kontoinnstillinger</h2>
+                <p style={styles.settingsSubtitle}>Administrer profil, utseende og sikkerhet.</p>
+              </div>
+              <button style={styles.closeButton} onClick={handleCloseSettings}>
+                ×
+              </button>
+            </div>
+
+            <div style={styles.settingsBody}>
+              <section style={styles.settingsSection}>
+                <h3 style={styles.sectionTitle}>Profil</h3>
+                <label style={styles.settingsLabel} htmlFor="displayNameInput">Visningsnavn</label>
+                <input
+                  id="displayNameInput"
+                  style={styles.settingsInput}
+                  value={displayNameInput}
+                  onChange={(e) => setDisplayNameInput(e.target.value)}
+                  placeholder="Ditt navn slik andre ser det"
+                />
+                <div style={styles.settingsActions}>
+                  <button
+                    type="button"
+                    style={styles.primaryButton}
+                    onClick={handleDisplayNameSave}
+                    disabled={savingDisplayName}
+                  >
+                    {savingDisplayName ? 'Lagrer…' : 'Oppdater navn'}
+                  </button>
+                </div>
+                {displayNameStatus && (
+                  <p style={styles.feedback(displayNameStatus.type)}>
+                    {displayNameStatus.text}
+                  </p>
+                )}
+
+                <div style={styles.infoGrid}>
+                  <div style={styles.infoRow}>
+                    <span style={styles.infoLabel}>E-post</span>
+                    <span style={styles.infoValue}>{user?.email || '—'}</span>
+                  </div>
+                  <div style={styles.infoRow}>
+                    <span style={styles.infoLabel}>Innloggingstype</span>
+                    <span style={styles.infoValue}>{providerLabel}</span>
+                  </div>
+                  <div style={styles.infoRow}>
+                    <span style={styles.infoLabel}>Sist innlogget</span>
+                    <span style={styles.infoValue}>{lastSignInFormatted}</span>
+                  </div>
+                  <div style={{ ...styles.infoRow, flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+                    <span style={styles.infoLabel}>Bruker-ID</span>
+                    <div style={styles.copyWrapper}>
+                      <code style={styles.infoCode}>{user?.id}</code>
+                      <button type="button" style={styles.copyButton} onClick={handleCopyUserId}>
+                        {copyState}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section style={styles.settingsSection}>
+                <h3 style={styles.sectionTitle}>Utseende</h3>
+                <p style={styles.sectionSubtitle}>Disse valgene gjelder kun på denne enheten.</p>
+
+                <div style={styles.preferenceRow}>
+                  <div>
+                    <p style={styles.preferenceTitle}>Modus</p>
+                    <p style={styles.preferenceHint}>Veksle mellom mørkt og lyst tema for bygdeoversikten.</p>
+                  </div>
+                  <button type="button" style={styles.secondaryButton} onClick={handleDarkModeToggle}>
+                    {darkMode ? 'Bruk lyst tema' : 'Bruk mørkt tema'}
+                  </button>
+                </div>
+
+                <div style={styles.preferenceRow}>
+                  <div>
+                    <p style={styles.preferenceTitle}>Bakgrunnsbilde</p>
+                    <p style={styles.preferenceHint}>Last opp din egen bakgrunn eller tilbakestill til standard.</p>
+                  </div>
+                  <div style={styles.preferenceButtons}>
+                    <button
+                      type="button"
+                      style={styles.secondaryButton}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Last opp nytt
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.ghostButton}
+                      onClick={handleResetBackground}
+                    >
+                      Tilbakestill
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section style={styles.settingsSection}>
+                <h3 style={styles.sectionTitle}>Sikkerhet</h3>
+                <div style={styles.preferenceRow}>
+                  <div>
+                    <p style={styles.preferenceTitle}>Logg ut på alle enheter</p>
+                    <p style={styles.preferenceHint}>Bruk dette hvis du har logget inn på en delt eller tapt enhet.</p>
+                  </div>
+                  <button
+                    type="button"
+                    style={styles.secondaryButton}
+                    onClick={handleGlobalLogout}
+                    disabled={globalLogoutLoading}
+                  >
+                    {globalLogoutLoading ? 'Logger ut…' : 'Logg ut alle enheter'}
+                  </button>
+                </div>
+                {globalLogoutStatus && (
+                  <p style={styles.feedback(globalLogoutStatus.type)}>
+                    {globalLogoutStatus.text}
+                  </p>
+                )}
+
+                <div style={styles.dangerBox}>
+                  <h4 style={styles.dangerTitle}>Slett konto</h4>
+                  <p style={styles.preferenceHint}>
+                    Dette fjerner bygde-medlemskap, innlegg og kontoen din permanent. Skriv «SLETT» for å bekrefte.
+                  </p>
+                  <input
+                    style={styles.dangerInput}
+                    value={deleteConfirmation}
+                    onChange={(e) => setDeleteConfirmation(e.target.value.toUpperCase())}
+                    placeholder="Skriv SLETT for å bekrefte"
+                  />
+                  <button
+                    type="button"
+                    style={styles.dangerButton}
+                    disabled={deleteConfirmation !== 'SLETT' || deletingAccount}
+                    onClick={handleAccountDeletion}
+                  >
+                    {deletingAccount ? 'Sletter…' : 'Slett konto'}
+                  </button>
+                  {deleteStatus && (
+                    <p style={styles.feedback(deleteStatus.type)}>
+                      {deleteStatus.text}
+                    </p>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -578,11 +906,27 @@ const getStyles = (darkMode, backgroundImage) => {
       cursor: 'pointer',
       transition: 'transform 0.2s ease, box-shadow 0.2s ease',
     },
+    bygdHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '8px',
+    },
     bygdName: {
       margin: '0 0 8px 0',
       fontSize: '18px',
       color: palette.text,
     },
+    roleBadge: (role) => ({
+      fontSize: '11px',
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      padding: '3px 10px',
+      borderRadius: '999px',
+      color: role === 'owner' ? '#92400e' : '#1d4ed8',
+      backgroundColor: role === 'owner' ? 'rgba(250,204,21,0.3)' : 'rgba(191,219,254,0.4)',
+    }),
     bygdDescription: {
       margin: '0 0 12px 0',
       color: palette.text,
@@ -681,6 +1025,222 @@ const getStyles = (darkMode, backgroundImage) => {
       fontWeight: 600,
       cursor: 'pointer',
       minWidth: '90px',
+    },
+    settingsOverlay: {
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+      padding: '40px 16px',
+      zIndex: 100,
+      overflowY: 'auto',
+    },
+    settingsModal: {
+      width: '100%',
+      maxWidth: '720px',
+      backgroundColor: palette.cardBg,
+      borderRadius: '16px',
+      padding: '24px',
+      boxShadow: palette.cardShadow,
+      backdropFilter: 'blur(18px)',
+    },
+    settingsHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '12px',
+      gap: '12px',
+    },
+    settingsTitle: {
+      margin: 0,
+      fontSize: '24px',
+    },
+    settingsSubtitle: {
+      margin: '4px 0 0 0',
+      color: palette.text,
+      opacity: 0.8,
+      fontSize: '14px',
+    },
+    closeButton: {
+      border: 'none',
+      background: 'rgba(255,255,255,0.1)',
+      color: palette.text,
+      fontSize: '24px',
+      width: '38px',
+      height: '38px',
+      borderRadius: '10px',
+      cursor: 'pointer',
+    },
+    settingsBody: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '20px',
+    },
+    settingsSection: {
+      backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: '12px',
+      padding: '18px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '12px',
+    },
+    sectionTitle: {
+      margin: 0,
+      fontSize: '18px',
+    },
+    sectionSubtitle: {
+      margin: '0 0 6px 0',
+      fontSize: '13px',
+      color: palette.text,
+      opacity: 0.75,
+    },
+    settingsLabel: {
+      fontSize: '13px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em',
+      opacity: 0.8,
+    },
+    settingsInput: {
+      width: '100%',
+      padding: '12px',
+      borderRadius: '8px',
+      border: '1px solid rgba(255,255,255,0.4)',
+      backgroundColor: darkMode ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.9)',
+      color: palette.text,
+      fontSize: '15px',
+    },
+    settingsActions: {
+      display: 'flex',
+      justifyContent: 'flex-end',
+    },
+    primaryButton: {
+      padding: '10px 18px',
+      borderRadius: '8px',
+      border: 'none',
+      backgroundColor: palette.buttonBg,
+      color: '#fff',
+      cursor: 'pointer',
+      fontWeight: 600,
+    },
+    feedback: (type) => ({
+      margin: 0,
+      fontSize: '13px',
+      color: type === 'success' ? '#10b981' : '#f87171',
+    }),
+    infoGrid: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      marginTop: '8px',
+    },
+    infoRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '12px',
+      width: '100%',
+    },
+    infoLabel: {
+      fontSize: '13px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em',
+      opacity: 0.7,
+    },
+    infoValue: {
+      fontWeight: 600,
+      wordBreak: 'break-word',
+    },
+    infoCode: {
+      padding: '6px 10px',
+      borderRadius: '6px',
+      backgroundColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      fontFamily: 'monospace',
+      fontSize: '13px',
+    },
+    copyWrapper: {
+      display: 'flex',
+      gap: '8px',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+    },
+    copyButton: {
+      border: 'none',
+      backgroundColor: palette.buttonBg,
+      color: '#fff',
+      borderRadius: '999px',
+      padding: '6px 14px',
+      cursor: 'pointer',
+      fontSize: '13px',
+    },
+    preferenceRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      gap: '12px',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+    },
+    preferenceTitle: {
+      margin: '0 0 4px 0',
+      fontWeight: 600,
+    },
+    preferenceHint: {
+      margin: 0,
+      fontSize: '13px',
+      color: palette.text,
+      opacity: 0.75,
+      maxWidth: '380px',
+    },
+    secondaryButton: {
+      padding: '10px 16px',
+      borderRadius: '8px',
+      border: '1px solid rgba(255,255,255,0.4)',
+      background: 'none',
+      color: palette.text,
+      cursor: 'pointer',
+    },
+    ghostButton: {
+      padding: '10px 16px',
+      borderRadius: '8px',
+      border: '1px dashed rgba(255,255,255,0.4)',
+      background: 'none',
+      color: palette.text,
+      cursor: 'pointer',
+    },
+    preferenceButtons: {
+      display: 'flex',
+      gap: '10px',
+      flexWrap: 'wrap',
+    },
+    dangerBox: {
+      border: '1px solid rgba(248,113,113,0.4)',
+      borderRadius: '10px',
+      padding: '12px',
+      marginTop: '12px',
+      backgroundColor: darkMode ? 'rgba(153,27,27,0.2)' : 'rgba(248,113,113,0.15)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+    },
+    dangerTitle: {
+      margin: 0,
+      color: '#b91c1c',
+    },
+    dangerInput: {
+      padding: '10px',
+      borderRadius: '6px',
+      border: '1px solid rgba(248,113,113,0.6)',
+      background: 'rgba(255,255,255,0.9)',
+      fontSize: '14px',
+    },
+    dangerButton: {
+      padding: '10px 16px',
+      border: 'none',
+      borderRadius: '6px',
+      backgroundColor: '#b91c1c',
+      color: '#fff',
+      cursor: 'pointer',
     },
   }
 }

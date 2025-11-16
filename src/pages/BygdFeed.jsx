@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../utils/supabaseClient'
 import Post from '../components/Post'
 import CreatePost from '../components/CreatePost'
+import BygdAdminPanel from '../components/BygdAdminPanel'
 
 export default function BygdFeed() {
   const { bygdId } = useParams()
@@ -17,54 +18,32 @@ export default function BygdFeed() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
   const [membershipActionLoading, setMembershipActionLoading] = useState(false)
+  const [userRole, setUserRole] = useState('guest')
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false)
+  const canModerate = userRole === 'owner' || userRole === 'moderator'
 
-  useEffect(() => {
-    if (!bygdId || !user?.id) return
-    fetchBygdAndPosts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bygdId, user?.id])
+  const resolveRole = useCallback(async (bygdData, isCurrentlyMember) => {
+    if (!user?.id) return 'guest'
+    if (bygdData?.created_by === user.id) return 'owner'
+    if (!isCurrentlyMember) return 'guest'
 
-  const fetchBygdAndPosts = async () => {
-    setLoading(true)
     try {
-      const { data: bygdData, error: bygdError } = await supabase
-        .from('bygder')
-        .select('*')
-        .eq('id', bygdId)
-        .single()
-
-      if (bygdError) throw bygdError
-      setBygd(bygdData)
-
-      const { data: membershipData, error: membershipError } = await supabase
-        .from('bygd_members')
-        .select('id')
+      const { data, error } = await supabase
+        .from('bygd_roles')
+        .select('role')
         .eq('bygd_id', bygdId)
         .eq('user_id', user.id)
         .maybeSingle()
 
-      if (membershipError) throw membershipError
-
-      const member = !!membershipData
-      setIsMember(member)
-
-      await refreshMemberCount()
-
-      if (!member) {
-        setPosts([])
-        return
-      }
-
-      await fetchPosts()
-    } catch (error) {
-      console.error('Error fetching bygd:', error)
-      navigate('/bygder')
-    } finally {
-      setLoading(false)
+      if (error && error.code !== 'PGRST116') throw error
+      return data?.role || 'member'
+    } catch (roleError) {
+      console.warn('Error resolving role for bygd', roleError)
+      return 'member'
     }
-  }
+  }, [bygdId, user?.id])
 
-  const refreshMemberCount = async () => {
+  const refreshMemberCount = useCallback(async () => {
     try {
       const { count, error } = await supabase
         .from('bygd_members')
@@ -77,9 +56,9 @@ export default function BygdFeed() {
     } catch (error) {
       console.error('Error refreshing member count:', error)
     }
-  }
+  }, [bygdId])
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('posts')
@@ -135,7 +114,61 @@ export default function BygdFeed() {
     } catch (error) {
       console.error('Error fetching posts:', error)
     }
-  }
+  }, [bygdId])
+
+  const fetchBygdAndPosts = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data: bygdData, error: bygdError } = await supabase
+        .from('bygder')
+        .select('*')
+        .eq('id', bygdId)
+        .single()
+
+      if (bygdError) throw bygdError
+      setBygd(bygdData)
+
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('bygd_members')
+        .select('id')
+        .eq('bygd_id', bygdId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (membershipError) throw membershipError
+
+      const member = !!membershipData
+      setIsMember(member)
+
+      await refreshMemberCount()
+
+      if (!member) {
+        setUserRole('guest')
+        setPosts([])
+        return
+      }
+
+      const role = await resolveRole(bygdData, member)
+      setUserRole(role)
+      await fetchPosts()
+    } catch (error) {
+      console.error('Error fetching bygd:', error)
+      navigate('/bygder')
+    } finally {
+      setLoading(false)
+    }
+  }, [bygdId, fetchPosts, navigate, refreshMemberCount, resolveRole, user?.id])
+
+  useEffect(() => {
+    if (!bygdId || !user?.id) return
+    fetchBygdAndPosts()
+  }, [bygdId, fetchBygdAndPosts, user?.id])
+
+  useEffect(() => {
+    if (!isMember) {
+      setAdminPanelOpen(false)
+    }
+  }, [isMember])
 
   const handleLeaveBygd = async () => {
     if (typeof window !== 'undefined') {
@@ -154,6 +187,8 @@ export default function BygdFeed() {
       if (error) throw error
 
       setIsMember(false)
+  setUserRole('guest')
+  setAdminPanelOpen(false)
       setBygd((prev) => (prev ? { ...prev, member_count: Math.max(0, (prev.member_count ?? 1) - 1) } : prev))
       await fetchBygdAndPosts()
       navigate('/bygder')
@@ -214,6 +249,14 @@ export default function BygdFeed() {
           </button>
           {isMember && (
             <div style={styles.headerActions}>
+              {canModerate && (
+                <button
+                  style={styles.adminButton}
+                  onClick={() => setAdminPanelOpen(true)}
+                >
+                  Administrer bygda
+                </button>
+              )}
               <button
                 style={styles.shareButton}
                 onClick={() => setShareModalOpen(true)}
@@ -256,6 +299,7 @@ export default function BygdFeed() {
                     key={post.id}
                     post={post}
                     currentUserId={user.id}
+                    canModerate={canModerate}
                     onUpdate={fetchPosts}
                   />
                 ))
@@ -322,6 +366,20 @@ export default function BygdFeed() {
           </div>
         </div>
       )}
+
+      {canModerate && (
+        <BygdAdminPanel
+          open={adminPanelOpen}
+          onClose={() => setAdminPanelOpen(false)}
+          bygdId={bygdId}
+          bygd={bygd}
+          userRole={userRole}
+          currentUserId={user.id}
+          onMembersChanged={() => {
+            refreshMemberCount()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -375,6 +433,15 @@ const styles = {
     marginTop: '8px',
     fontSize: '12px',
     opacity: 0.8,
+  },
+  adminButton: {
+    padding: '10px 18px',
+    borderRadius: '999px',
+    border: '1px solid rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    color: '#fff',
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   shareButton: {
     padding: '10px 18px',

@@ -3,7 +3,7 @@ import { supabase } from '../utils/supabaseClient'
 
 const DEFAULT_VISIBLE = 2
 
-export default function Comments({ postId, currentUserId, onUpdate, onCommentCountChange }) {
+export default function Comments({ postId, currentUserId, onUpdate, onCommentCountChange, canModerate = false }) {
   const [comments, setComments] = useState([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(false)
@@ -254,26 +254,34 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
     return ids
   }
 
-  const handleDeleteComment = async (commentId) => {
-    if (!currentUserId || deletingCommentIds[commentId]) return
+  const handleDeleteComment = async (targetComment) => {
+    const comment = typeof targetComment === 'object' ? targetComment : commentIndex.get(targetComment)
+    if (!comment) return
+    if (!currentUserId || deletingCommentIds[comment.id]) return
+    if (comment.user_id !== currentUserId && !canModerate) return
 
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm('Vil du slette denne kommentaren?')
       if (!confirmed) return
     }
 
-    setDeletingCommentIds((prev) => ({ ...prev, [commentId]: true }))
+    setDeletingCommentIds((prev) => ({ ...prev, [comment.id]: true }))
 
     try {
-      const { error } = await supabase
+      let query = supabase
         .from('comments')
         .delete()
-        .eq('id', commentId)
-        .eq('user_id', currentUserId)
+        .eq('id', comment.id)
+
+      if (!canModerate || comment.user_id === currentUserId) {
+        query = query.eq('user_id', currentUserId)
+      }
+
+      const { error } = await query
 
       if (error) throw error
 
-      const idsToRemove = collectDescendantIds(commentId)
+      const idsToRemove = collectDescendantIds(comment.id)
       const remaining = commentsRef.current.filter((comment) => !idsToRemove.has(comment.id))
 
       commentsRef.current = remaining
@@ -304,7 +312,7 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
       console.error('Error deleting comment:', error)
       alert('Kunne ikke slette kommentar: ' + error.message)
     } finally {
-      setDeletingCommentIds((prev) => ({ ...prev, [commentId]: false }))
+      setDeletingCommentIds((prev) => ({ ...prev, [comment.id]: false }))
     }
   }
 
@@ -347,6 +355,7 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
     const isLiked = !!commentLikes.liked[comment.id]
     const likeCount = commentLikes.counts[comment.id] || 0
     const isBusy = !!likeBusyMap[comment.id]
+    const canDelete = comment.user_id === currentUserId || canModerate
 
     return (
       <div key={comment.id} style={{ ...styles.comment, marginLeft: depth * 20 }}>
@@ -388,13 +397,13 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
             >
               Svar
             </button>
-            {comment.user_id === currentUserId && (
+            {canDelete && (
               <>
                 <span style={styles.dot}>·</span>
                 <button
                   type="button"
                   style={styles.deleteCommentButton}
-                  onClick={() => handleDeleteComment(comment.id)}
+                  onClick={() => handleDeleteComment(comment)}
                   disabled={!!deletingCommentIds[comment.id]}
                 >
                   {deletingCommentIds[comment.id] ? 'Sletter…' : 'Slett'}

@@ -55,6 +55,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
    - **profiles table** - User profiles
    - **bygder table** - Communities
    - **bygd_members table** - Community memberships
+   - **bygd_roles table** - Eiere/moderatorer per bygd
    - **posts table** - User posts
    - **likes table** - Post likes
    - **comments table** - Post comments
@@ -82,7 +83,17 @@ For production:
 2. Configure SMTP settings with your email provider
 3. This ensures emails come from your domain
 
-### 6. Run Development Server
+### 6. Enable Social Login Providers (Optional)
+
+1. Go to Authentication → Providers in the Supabase dashboard
+2. Enable **Google**, **Azure (Microsoft)** and **Apple**
+3. For each provider, set the Redirect URL to:
+   - Development: `http://localhost:5173/bygder`
+   - Production: `https://din-domene.no/bygder` (or tilsvarende)
+4. Fill inn klient-ID og klienthemmelighet som du får fra Google Cloud Console, Azure App Registrations og Apple Developer Portal
+5. Klikk Save – deretter kan brukere trykke på knappene i påloggingsvinduet
+
+### 7. Run Development Server
 
 ```bash
 npm run dev
@@ -90,7 +101,7 @@ npm run dev
 
 The app will be available at http://localhost:5173
 
-### 7. Test the Application
+### 8. Test the Application
 
 1. **Register a new user**:
    - Click "Trenger du en konto? Registrer deg"
@@ -114,7 +125,7 @@ The app will be available at http://localhost:5173
    - Like your post by clicking the heart icon
    - Add a comment
 
-### 8. Build for Production
+### 9. Build for Production
 
 ```bash
 npm run build
@@ -122,7 +133,7 @@ npm run build
 
 This creates an optimized build in the `dist/` folder.
 
-### 9. Deploy to Production
+### 10. Deploy to Production
 
 **Option A: Vercel (Recommended)**
 ```bash

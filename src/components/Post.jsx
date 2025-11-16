@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../utils/supabaseClient'
 import Comments from './Comments'
 
-export default function Post({ post, currentUserId, onUpdate }) {
+export default function Post({ post, currentUserId, onUpdate, canModerate = false }) {
   const [showComments, setShowComments] = useState((post.comments_count || 0) > 0)
   const [isLiked, setIsLiked] = useState(false)
   const [commentCount, setCommentCount] = useState(post.comments_count || 0)
   const [likeUsers, setLikeUsers] = useState(post.likes || [])
   const [deleting, setDeleting] = useState(false)
+  const canDelete = post.user_id === currentUserId || canModerate
 
   useEffect(() => {
     // Check if current user has liked this post
@@ -142,6 +143,7 @@ export default function Post({ post, currentUserId, onUpdate }) {
   }
 
   const handleDeletePost = async () => {
+    if (!canDelete) return
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm('Vil du slette dette innlegget? Dette kan ikke angres.')
       if (!confirmed) return
@@ -149,11 +151,16 @@ export default function Post({ post, currentUserId, onUpdate }) {
 
     setDeleting(true)
     try {
-      const { error } = await supabase
+      let query = supabase
         .from('posts')
         .delete()
         .eq('id', post.id)
-        .eq('user_id', currentUserId)
+
+      if (!canModerate || post.user_id === currentUserId) {
+        query = query.eq('user_id', currentUserId)
+      }
+
+      const { error } = await query
 
       if (error) throw error
 
@@ -203,7 +210,7 @@ export default function Post({ post, currentUserId, onUpdate }) {
             <div style={styles.timestamp}>{formatDate(post.created_at)}</div>
           </div>
         </div>
-          {post.user_id === currentUserId && (
+          {canDelete && (
             <button
               onClick={handleDeletePost}
               style={{
@@ -262,6 +269,7 @@ export default function Post({ post, currentUserId, onUpdate }) {
         <Comments
           postId={post.id}
           currentUserId={currentUserId}
+          canModerate={canModerate}
           onUpdate={() => {
             onUpdate?.()
             refreshCommentCount()

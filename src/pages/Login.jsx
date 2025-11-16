@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import harpBackground from '../../pictures/harp.png'
+import { supabase } from '../utils/supabaseClient'
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true)
@@ -10,6 +11,7 @@ export default function Login() {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [socialLoading, setSocialLoading] = useState(null)
   const [pendingInviteBygdId, setPendingInviteBygdId] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('inviteBygdId')
@@ -65,6 +67,26 @@ export default function Login() {
       setError(error.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSocialSignIn = async (provider) => {
+    if (typeof window === 'undefined') return
+    setError('')
+    setSocialLoading(provider)
+    try {
+      const redirectTo = `${window.location.origin}/bygder`
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo,
+        },
+      })
+
+      if (error) throw error
+    } catch (error) {
+      setError(error.message)
+      setSocialLoading(null)
     }
   }
 
@@ -139,6 +161,59 @@ export default function Login() {
           </button>
         </form>
 
+        <div style={styles.divider}>
+          <span style={styles.dividerLine} />
+          <span style={styles.dividerText}>eller</span>
+          <span style={styles.dividerLine} />
+        </div>
+
+        <div style={styles.socialSection}>
+          <p style={styles.socialHint}>Fortsett med en konto du allerede har</p>
+          <div style={styles.socialButtons}>
+            <button
+              type="button"
+              style={{
+                ...styles.socialButton,
+                ...styles.googleButton,
+                opacity: socialLoading && socialLoading !== 'google' ? 0.6 : 1,
+                cursor: socialLoading ? 'not-allowed' : 'pointer',
+              }}
+              onClick={() => handleSocialSignIn('google')}
+              disabled={!!socialLoading}
+            >
+              {socialLoading === 'google' ? 'Sender deg til Google…' : 'Fortsett med Google'}
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...styles.socialButton,
+                ...styles.microsoftButton,
+                opacity: socialLoading && socialLoading !== 'azure' ? 0.6 : 1,
+                cursor: socialLoading ? 'not-allowed' : 'pointer',
+              }}
+              onClick={() => handleSocialSignIn('azure')}
+              disabled={!!socialLoading}
+            >
+              {socialLoading === 'azure' ? 'Åpner Microsoft…' : 'Fortsett med Microsoft'}
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...styles.socialButton,
+                ...styles.appleButton,
+                opacity: socialLoading && socialLoading !== 'apple' ? 0.6 : 1,
+                cursor: socialLoading ? 'not-allowed' : 'pointer',
+              }}
+              onClick={() => handleSocialSignIn('apple')}
+              disabled={!!socialLoading}
+            >
+              {socialLoading === 'apple' ? 'Åpner Apple…' : 'Fortsett med Apple'}
+            </button>
+          </div>
+        </div>
+
         <button
           onClick={() => setIsLogin(!isLogin)}
           style={styles.toggleButton}
@@ -190,6 +265,65 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '16px',
+  },
+  divider: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    margin: '24px 0 12px',
+    color: '#888',
+    fontSize: '12px',
+  },
+  dividerLine: {
+    flex: 1,
+    height: '1px',
+    backgroundColor: '#dcdcdc',
+  },
+  dividerText: {
+    textTransform: 'uppercase',
+    letterSpacing: '0.1em',
+    fontWeight: 600,
+  },
+  socialSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  socialHint: {
+    margin: 0,
+    fontSize: '13px',
+    color: '#444',
+    textAlign: 'center',
+  },
+  socialButtons: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  socialButton: {
+    padding: '11px',
+    borderRadius: '6px',
+    border: '1px solid #dcdcdc',
+    fontSize: '15px',
+    fontWeight: 600,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'opacity 0.2s ease',
+    backgroundColor: '#fff',
+  },
+  googleButton: {
+    backgroundColor: '#fff',
+    color: '#1f1f1f',
+  },
+  microsoftButton: {
+    backgroundColor: '#f3f4f6',
+    color: '#111827',
+  },
+  appleButton: {
+    backgroundColor: '#111',
+    color: '#fff',
+    borderColor: '#000',
   },
   inputGroup: {
     display: 'flex',

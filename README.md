@@ -10,7 +10,9 @@ LokalNett er et sosialt nettverk for små norske bygdesamfunn. Appen lar brukere
 - ✅ **Innleggsoppretting** - Del tekst, bilder og videoer
 - ✅ **GIF-støtte** - Finn og legg til Giphy-GIFer direkte i innlegg
 - ✅ **Private feeds** - Hver bygd har sin egen feed
+- ✅ **OAuth-pålogging** - Registrer deg med Google, Microsoft eller Apple på sekunder
 - ✅ **Likes og kommentarer** - Engasjer med innhold fra bygdesamfunnet
+- ✅ **Moderatorer og eiere** - Eiere kan utnevne moderatorer, fjerne medlemmer og holde innholdet ryddig
 - ✅ **Mange-til-mange relasjoner** - Brukere kan være i flere bygder
 - ✅ **Ingen algoritmer** - Kronologisk feed uten filtere
 - ✅ **Reklamefritt** - Fokus på ekte lokal tilkobling
@@ -70,6 +72,7 @@ Appen vil kjøre på `http://localhost:5173`
 
 Se `DATABASE_SCHEMA.md` for fullstendig dokumentasjon av databasestrukturen, inkludert:
 - Tabeller (profiles, bygder, bygd_members, posts, likes, comments)
+   - Ekstra hjelpetabeller som `bygd_roles` for moderering
 - Row Level Security (RLS) policies
 - Triggere for automatisk oppdatering av tellere
 - Storage buckets for medier og avatarer
@@ -109,6 +112,7 @@ src/
    - Brukere kan registrere seg med e-post og passord
    - Velger et visningsnavn
    - E-postbekreftelse sendes via Supabase
+   - Alternativt kan de logge inn med Google, Microsoft (Azure AD) eller Apple
 
 2. **Bygd-administrasjon**
    - Opprett nye bygder med navn og beskrivelse
@@ -125,6 +129,11 @@ src/
    - Lik innlegg
    - Kommenter på innlegg
    - Se antall likes og kommentarer
+
+5. **Bygd-moderering**
+   - Eiere og moderatorer har et dedikert admin-panel i hver bygd
+   - Eiere kan utnevne/fjerne moderatorer og kaste ut medlemmer
+   - Moderatorer kan fjerne innlegg og kommentarer fra andre brukere ved regelbrudd
 
 ### Sikkerhet
 
