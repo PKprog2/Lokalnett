@@ -105,6 +105,14 @@ export default function Bygder() {
     setDisplayNameInput(fallbackName)
   }, [user])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (localStorage.getItem('openSettingsOnBygder') === 'true') {
+      localStorage.removeItem('openSettingsOnBygder')
+      setIsSettingsOpen(true)
+    }
+  }, [])
+
   const fetchBygder = async () => {
     try {
       const { data, error } = await supabase
@@ -424,7 +432,7 @@ export default function Bygder() {
         }}
       />
       <header style={styles.header}>
-        <h1 style={styles.title}>Mine Bygder</h1>
+        <h1 style={styles.title}>Mine bygder</h1>
         <div style={styles.userMenuWrapper} ref={userMenuRef}>
           <div style={styles.initialsButtonWrapper}>
             <button
@@ -947,7 +955,7 @@ const getStyles = (darkMode, backgroundImage) => {
       position: 'absolute',
       left: '10px',
       top: '47%',
-      transform: 'translateY(-50%)',
+      transform: 'translateY(-55%)',
       color: palette.text,
       opacity: 0.7,
       display: 'flex',

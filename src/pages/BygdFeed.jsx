@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../utils/supabaseClient'
@@ -9,7 +9,7 @@ import BygdAdminPanel from '../components/BygdAdminPanel'
 export default function BygdFeed() {
   const { bygdId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const [bygd, setBygd] = useState(null)
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -20,6 +20,9 @@ export default function BygdFeed() {
   const [membershipActionLoading, setMembershipActionLoading] = useState(false)
   const [userRole, setUserRole] = useState('guest')
   const [adminPanelOpen, setAdminPanelOpen] = useState(false)
+  const [hoveredBygdId, setHoveredBygdId] = useState(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
   const canModerate = userRole === 'owner' || userRole === 'moderator'
 
   const resolveRole = useCallback(async (bygdData, isCurrentlyMember) => {
@@ -170,6 +173,17 @@ export default function BygdFeed() {
     }
   }, [isMember])
 
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
+
   const handleLeaveBygd = async () => {
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm('Er du sikker på at du vil forlate denne bygda?')
@@ -236,6 +250,32 @@ export default function BygdFeed() {
     fetchPosts()
   }
 
+  const initials = (user?.user_metadata?.display_name || user?.email || '?')
+    .split(' ')
+    .map((word) => word?.[0] || '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
+  const handleOpenSettingsShortcut = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('openSettingsOnBygder', 'true')
+    }
+    setMenuOpen(false)
+    navigate('/bygder')
+  }
+
+  const handleGoToMessages = () => {
+    setMenuOpen(false)
+    navigate('/direktemeldinger')
+  }
+
+  const handleSignOut = async () => {
+    setMenuOpen(false)
+    await signOut()
+    navigate('/')
+  }
+
   if (loading) {
     return <div style={styles.loading}>Laster...</div>
   }
@@ -245,33 +285,56 @@ export default function BygdFeed() {
       <header style={styles.header}>
         <div style={styles.headerRow}>
           <button onClick={() => navigate('/bygder')} style={styles.backButton}>
-            ← Tilbake
+            ← Mine bygder
           </button>
-          {isMember && (
-            <div style={styles.headerActions}>
-              {canModerate && (
+          <div style={styles.headerControls}>
+            {isMember && (
+              <div style={styles.headerActions}>
+                {canModerate && (
+                  <button
+                    style={styles.adminButton}
+                    onClick={() => setAdminPanelOpen(true)}
+                  >
+                    Administrer bygda
+                  </button>
+                )}
                 <button
-                  style={styles.adminButton}
-                  onClick={() => setAdminPanelOpen(true)}
+                  style={styles.shareButton}
+                  onClick={() => setShareModalOpen(true)}
                 >
-                  Administrer bygda
+                  Del bygda
                 </button>
+                <button
+                  style={styles.leaveButton}
+                  onClick={handleLeaveBygd}
+                  disabled={membershipActionLoading}
+                >
+                  {membershipActionLoading ? 'Forlater...' : 'Forlat bygda'}
+                </button>
+              </div>
+            )}
+            <div style={styles.userMenuWrapper} ref={userMenuRef}>
+              <button
+                style={styles.initialsButton}
+                onClick={() => setMenuOpen((prev) => !prev)}
+              >
+                {initials}
+              </button>
+              {menuOpen && (
+                <div style={styles.userMenu}>
+                  <button style={styles.menuItem} onClick={handleOpenSettingsShortcut}>
+                    Innstillinger
+                  </button>
+                  <button style={styles.menuItem} onClick={handleGoToMessages}>
+                    Direktemeldinger
+                  </button>
+                  <button style={styles.menuItem} onClick={handleSignOut}>
+                    Logg ut
+                  </button>
+                </div>
               )}
-              <button
-                style={styles.shareButton}
-                onClick={() => setShareModalOpen(true)}
-              >
-                Del bygda
-              </button>
-              <button
-                style={styles.leaveButton}
-                onClick={handleLeaveBygd}
-                disabled={membershipActionLoading}
-              >
-                {membershipActionLoading ? 'Forlater...' : 'Forlat bygda'}
-              </button>
             </div>
-          )}
+          </div>
         </div>
         <div style={styles.headerInfo}>
           <h1 style={styles.title}>{bygd?.name}</h1>
@@ -399,12 +462,28 @@ const styles = {
   headerRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: '12px',
     flexWrap: 'wrap',
   },
+  headerControls: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
   headerInfo: {
     marginTop: '16px',
+  },
+  settingsButton: {
+    padding: '10px 18px',
+    borderRadius: '999px',
+    border: '1px solid rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    color: '#fff',
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   headerActions: {
     display: 'flex',
@@ -601,5 +680,44 @@ const styles = {
     fontSize: '13px',
     color: '#4a4a4a',
     margin: 0,
+  },
+  userMenuWrapper: {
+    position: 'relative',
+  },
+  initialsButton: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '50%',
+    border: '2px solid rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    color: '#fff',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textTransform: 'uppercase',
+  },
+  userMenu: {
+    position: 'absolute',
+    top: '50px',
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: '10px',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+    padding: '6px',
+    minWidth: '200px',
+    zIndex: 20,
+  },
+  menuItem: {
+    width: '100%',
+    border: 'none',
+    background: 'none',
+    padding: '10px 12px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    fontWeight: 600,
+    color: '#1f2a1c',
   },
 }
