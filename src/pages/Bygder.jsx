@@ -404,26 +404,37 @@ export default function Bygder() {
             {initials}
           </button>
           {menuOpen && (
-            <div style={styles.userMenu}>
+            <div
+              style={styles.userMenu}
+              className="user-menu-dropdown"
+              data-theme={darkMode ? 'dark' : 'light'}
+            >
               <button
+                className="user-menu-item"
                 style={styles.menuItem}
                 onClick={handleSettingsOpen}
               >
                 Innstillinger
               </button>
               <button
+                className="user-menu-item"
                 style={styles.menuItem}
                 onClick={() => fileInputRef.current?.click()}
               >
                 Endre bakgrunn
               </button>
               <button
+                className="user-menu-item"
                 style={styles.menuItem}
                 onClick={handleDarkModeToggle}
               >
                 {darkMode ? 'Lys modus' : 'Mørk modus'}
               </button>
-              <button style={styles.menuItem} onClick={handleSignOut}>
+              <button
+                className="user-menu-item"
+                style={styles.menuItem}
+                onClick={handleSignOut}
+              >
                 Logg ut
               </button>
             </div>
@@ -780,18 +791,24 @@ const getStyles = (darkMode, backgroundImage) => {
       color: '#fff',
       fontWeight: '600',
       cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      lineHeight: 1,
+      fontSize: '14px',
+      textTransform: 'uppercase',
     },
     userMenu: {
       position: 'absolute',
       top: '50px',
       right: 0,
-      backgroundColor: palette.cardBg,
+      backgroundColor: darkMode ? 'rgba(12, 24, 20, 0.92)' : '#fff',
       borderRadius: '8px',
       boxShadow: palette.cardShadow,
-      padding: '8px',
+      padding: '8px 14px 8px 5px',
       display: 'flex',
       flexDirection: 'column',
-      minWidth: '200px',
+      minWidth: '225px',
       zIndex: 10,
       backdropFilter: 'blur(12px)',
     },
@@ -803,12 +820,15 @@ const getStyles = (darkMode, backgroundImage) => {
       padding: '10px 12px',
       borderRadius: '6px',
       cursor: 'pointer',
+      width: '100%',
+      margin: '2px 4px',
+      transition: 'background-color 0.15s ease, color 0.15s ease',
     },
     content: {
       maxWidth: '1100px',
       margin: '0 auto',
       padding: '20px',
-      display: 'flex',
+      width: 'calc(100% - 8px)',
       gap: '24px',
       alignItems: 'flex-start',
       flexWrap: 'wrap',
