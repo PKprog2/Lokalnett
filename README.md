@@ -14,6 +14,7 @@ LokalNett er et sosialt nettverk for små norske bygdesamfunn. Appen lar brukere
 - ✅ **OAuth-pålogging** - Registrer deg med Google, Microsoft eller Apple på sekunder
 - ✅ **Likes og kommentarer** - Engasjer med innhold fra bygdesamfunnet
 - ✅ **Moderatorer og eiere** - Eiere kan utnevne moderatorer, fjerne medlemmer og holde innholdet ryddig
+- ✅ **Tilpassede bygdebakgrunner** - Administratorer kan laste opp unike header-bilder per bygd
 - ✅ **Mange-til-mange relasjoner** - Brukere kan være i flere bygder
 - ✅ **Ingen algoritmer** - Kronologisk feed uten filtere
 - ✅ **Reklamefritt** - Fokus på ekte lokal tilkobling
@@ -141,6 +142,7 @@ src/
    - Eiere og moderatorer har et dedikert admin-panel i hver bygd
    - Eiere kan utnevne/fjerne moderatorer og kaste ut medlemmer
    - Moderatorer kan fjerne innlegg og kommentarer fra andre brukere ved regelbrudd
+   - Admins kan oppdatere bakgrunnsbildet i toppen av bygda
 
 ### Sikkerhet
 

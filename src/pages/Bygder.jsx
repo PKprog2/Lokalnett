@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useDirectMessaging } from '../contexts/DirectMessageContext'
 import { supabase } from '../utils/supabaseClient'
 import { useNavigate } from 'react-router-dom'
+import BygdWelcomeAnimation from '../components/BygdWelcomeAnimation'
 
 export default function Bygder() {
   const [bygder, setBygder] = useState([])
@@ -28,6 +29,9 @@ export default function Bygder() {
   const [searchQuery, setSearchQuery] = useState('')
   const [joiningBygdId, setJoiningBygdId] = useState(null)
   const [roleMap, setRoleMap] = useState({})
+  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false)
+  const [selectedBygdName, setSelectedBygdName] = useState('')
+  const [selectedBygdId, setSelectedBygdId] = useState(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [displayNameInput, setDisplayNameInput] = useState('')
   const [displayNameStatus, setDisplayNameStatus] = useState(null)
@@ -112,6 +116,19 @@ export default function Bygder() {
       setIsSettingsOpen(true)
     }
   }, [])
+
+  const handleBygdClick = (bygdId, bygdName) => {
+    setSelectedBygdId(bygdId)
+    setSelectedBygdName(bygdName)
+    setShowWelcomeAnimation(true)
+  }
+
+  const handleAnimationComplete = () => {
+    setShowWelcomeAnimation(false)
+    if (selectedBygdId) {
+      navigate(`/bygd/${selectedBygdId}`)
+    }
+  }
 
   const fetchBygder = async () => {
     try {
@@ -419,6 +436,12 @@ export default function Bygder() {
 
   return (
     <div style={styles.container}>
+      {showWelcomeAnimation && (
+        <BygdWelcomeAnimation 
+          bygdName={selectedBygdName} 
+          onComplete={handleAnimationComplete} 
+        />
+      )}
       <input
         type="file"
         accept="image/*"
@@ -538,7 +561,7 @@ export default function Bygder() {
                             cursor: alreadyMember ? 'pointer' : 'default',
                             opacity: joiningBygdId === bygd.id ? 0.7 : 1,
                           }}
-                          onClick={alreadyMember ? () => navigate(`/bygd/${bygd.id}`) : undefined}
+                          onClick={alreadyMember ? () => handleBygdClick(bygd.id, bygd.name) : undefined}
                         >
                           <div>
                             <p style={styles.searchResultName}>{bygd.name}</p>
@@ -631,7 +654,7 @@ export default function Bygder() {
                     }}
                     onMouseEnter={() => setHoveredBygdId(bygd.id)}
                     onMouseLeave={() => setHoveredBygdId(null)}
-                    onClick={() => navigate(`/bygd/${bygd.id}`)}
+                    onClick={() => handleBygdClick(bygd.id, bygd.name)}
                   >
                     <div style={styles.bygdHeader}>
                       <h3 style={styles.bygdName}>{bygd.name}</h3>

@@ -317,6 +317,33 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
     return ids
   }
 
+  const deleteCommentOnServer = async (comment) => {
+    if (!comment) return
+    const isOwnComment = comment.user_id === currentUserId
+
+    if (canModerate && !isOwnComment) {
+      const { error } = await supabase.rpc('moderator_delete_comment', {
+        target_comment_id: comment.id,
+        actor_id: currentUserId,
+      })
+
+      if (error) throw error
+      return
+    }
+
+    let query = supabase
+      .from('comments')
+      .delete()
+      .eq('id', comment.id)
+
+    if (!canModerate || isOwnComment) {
+      query = query.eq('user_id', currentUserId)
+    }
+
+    const { error } = await query
+    if (error) throw error
+  }
+
   const handleDeleteComment = async (targetComment) => {
     const comment = typeof targetComment === 'object' ? targetComment : commentIndex.get(targetComment)
     if (!comment) return
@@ -331,18 +358,7 @@ export default function Comments({ postId, currentUserId, onUpdate, onCommentCou
     setDeletingCommentIds((prev) => ({ ...prev, [comment.id]: true }))
 
     try {
-      let query = supabase
-        .from('comments')
-        .delete()
-        .eq('id', comment.id)
-
-      if (!canModerate || comment.user_id === currentUserId) {
-        query = query.eq('user_id', currentUserId)
-      }
-
-      const { error } = await query
-
-      if (error) throw error
+      await deleteCommentOnServer(comment)
 
       const idsToRemove = collectDescendantIds(comment.id)
       const remaining = commentsRef.current.filter((comment) => !idsToRemove.has(comment.id))

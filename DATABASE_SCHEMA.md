@@ -41,6 +41,7 @@ CREATE TABLE bygder (
   created_by UUID REFERENCES auth.users(id) NOT NULL,
   member_count INTEGER DEFAULT 0,
   max_members INTEGER DEFAULT 1000,
+  header_image_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -59,15 +60,40 @@ CREATE POLICY "Bygder are viewable by members"
     )
   );
 
-CREATE POLICY "Users can create bygder" 
-  ON bygder FOR INSERT 
+-- IMPORTANT: Run FIX_BYGDER_RLS.sql to properly set up these policies
+-- The SQL script will drop ALL existing policies and create clean ones
+
+CREATE POLICY "Anyone can view bygder"
+  ON bygder FOR SELECT
+  USING (true);
+
+CREATE POLICY "Authenticated users can create bygder"
+  ON bygder FOR INSERT
   WITH CHECK (auth.uid() = created_by);
 
-CREATE POLICY "Creators can update their bygder" 
-  ON bygder FOR UPDATE 
-  USING (auth.uid() = created_by);
+CREATE POLICY "Owners and moderators can update bygder"
+  ON bygder FOR UPDATE
+  USING (
+    auth.uid() = created_by 
+    OR
+    EXISTS (
+      SELECT 1 FROM bygd_roles
+      WHERE bygd_roles.bygd_id = bygder.id
+        AND bygd_roles.user_id = auth.uid()
+        AND bygd_roles.role IN ('owner', 'moderator')
+    )
+  )
+  WITH CHECK (
+    auth.uid() = created_by 
+    OR
+    EXISTS (
+      SELECT 1 FROM bygd_roles
+      WHERE bygd_roles.bygd_id = bygder.id
+        AND bygd_roles.user_id = auth.uid()
+        AND bygd_roles.role IN ('owner', 'moderator')
+    )
+  );
 ```
--- TIL HER
 
 ### bygd_members
 Join table for users and bygder (many-to-many relationship).
@@ -492,6 +518,115 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER post_comments_count_trigger
 AFTER INSERT OR DELETE ON comments
 FOR EACH ROW EXECUTE FUNCTION update_post_comments_count();
+```
+
+### moderator_delete_comment helper
+Allows bygdeiere og moderatorer å slette kommentarer via en trygg RPC som omgår RLS etter at tilgang er validert.
+
+```sql
+CREATE OR REPLACE FUNCTION moderator_delete_comment(
+  target_comment_id UUID,
+  actor_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  comment_row comments%ROWTYPE;
+  post_row posts%ROWTYPE;
+  actor_can_delete BOOLEAN;
+BEGIN
+  SELECT * INTO comment_row FROM comments WHERE id = target_comment_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Comment % not found', target_comment_id;
+  END IF;
+
+  SELECT * INTO post_row FROM posts WHERE id = comment_row.post_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Parent post missing for comment %', target_comment_id;
+  END IF;
+
+  IF actor_id = comment_row.user_id THEN
+    DELETE FROM comments WHERE id = target_comment_id;
+    RETURN;
+  END IF;
+
+  actor_can_delete :=
+    post_row.user_id = actor_id
+    OR EXISTS (
+      SELECT 1
+      FROM bygder
+      WHERE bygder.id = post_row.bygd_id
+        AND bygder.created_by = actor_id
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM bygd_roles
+      WHERE bygd_roles.bygd_id = post_row.bygd_id
+        AND bygd_roles.user_id = actor_id
+        AND bygd_roles.role IN ('owner', 'moderator')
+    );
+
+  IF NOT actor_can_delete THEN
+    RAISE EXCEPTION 'Actor % is not allowed to delete comment %', actor_id, target_comment_id;
+  END IF;
+
+  DELETE FROM comments WHERE id = target_comment_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION moderator_delete_comment(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION moderator_delete_comment(UUID, UUID) TO authenticated;
+```
+
+### set_bygd_header_image helper
+Allows bygdeiere og moderatorer å oppdatere toppbakgrunnsbilde gjennom en sikker RPC i stedet for direkte RLS.
+
+```sql
+CREATE OR REPLACE FUNCTION set_bygd_header_image(
+  target_bygd_id UUID,
+  header_url TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  actor_id UUID := auth.uid();
+  can_edit BOOLEAN;
+BEGIN
+  IF actor_id IS NULL THEN
+    RAISE EXCEPTION 'Mangler innlogget bruker.';
+  END IF;
+
+  SELECT
+    (b.created_by = actor_id)
+    OR EXISTS (
+      SELECT 1 FROM bygd_roles
+      WHERE bygd_roles.bygd_id = target_bygd_id
+        AND bygd_roles.user_id = actor_id
+        AND bygd_roles.role IN ('owner', 'moderator')
+    )
+  INTO can_edit
+  FROM bygder b
+  WHERE b.id = target_bygd_id;
+
+  IF NOT can_edit THEN
+    RAISE EXCEPTION 'Du har ikke rettigheter til å endre denne bygda.';
+  END IF;
+
+  UPDATE bygder
+  SET header_image_url = header_url,
+      updated_at = NOW()
+  WHERE id = target_bygd_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION set_bygd_header_image(UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION set_bygd_header_image(UUID, TEXT) TO authenticated;
 ```
 
 ### delete_user_account helper

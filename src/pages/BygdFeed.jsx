@@ -20,9 +20,10 @@ export default function BygdFeed() {
   const [membershipActionLoading, setMembershipActionLoading] = useState(false)
   const [userRole, setUserRole] = useState('guest')
   const [adminPanelOpen, setAdminPanelOpen] = useState(false)
-  const [hoveredBygdId, setHoveredBygdId] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [headerImageUploading, setHeaderImageUploading] = useState(false)
   const userMenuRef = useRef(null)
+  const headerImageInputRef = useRef(null)
   const canModerate = userRole === 'owner' || userRole === 'moderator'
 
   const resolveRole = useCallback(async (bygdData, isCurrentlyMember) => {
@@ -250,6 +251,68 @@ export default function BygdFeed() {
     fetchPosts()
   }
 
+  const handleHeaderImageChange = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file || !bygdId || !canModerate) return
+    setHeaderImageUploading(true)
+    try {
+      const extension = file.name.split('.').pop() || 'jpg'
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const storagePath = `bygd-headers/${bygdId}/${uniqueSuffix}.${extension}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(storagePath, file, { upsert: true, contentType: file.type })
+
+      if (uploadError) throw uploadError
+
+      const { data: publicData } = supabase.storage
+        .from('media')
+        .getPublicUrl(storagePath)
+
+      const headerUrl = publicData?.publicUrl
+      if (!headerUrl) throw new Error('Kunne ikke hente offentlig URL for bildet.')
+
+      const { error: rpcError } = await supabase.rpc('set_bygd_header_image', {
+        target_bygd_id: bygdId,
+        header_url: headerUrl,
+      })
+
+      if (rpcError) {
+        const isBygdOwner = bygd?.created_by === user?.id
+        if (isBygdOwner) {
+          const { data: updatedBygd, error: directError } = await supabase
+            .from('bygder')
+            .update({ header_image_url: headerUrl })
+            .eq('id', bygdId)
+            .eq('created_by', user.id)
+            .select('*')
+            .single()
+
+          if (directError) {
+            throw directError
+          }
+
+          setBygd(updatedBygd)
+          return
+        }
+
+        throw rpcError
+      }
+
+      setBygd((prev) => (prev ? { ...prev, header_image_url: headerUrl } : prev))
+    } catch (error) {
+      console.error('Error updating header background:', error)
+      const message = typeof error?.message === 'string' ? error.message : 'Ukjent feil.'
+      alert(`Kunne ikke oppdatere bakgrunnsbildet: ${message}`)
+    } finally {
+      setHeaderImageUploading(false)
+      if (headerImageInputRef.current) {
+        headerImageInputRef.current.value = ''
+      }
+    }
+  }
+
   const initials = (user?.user_metadata?.display_name || user?.email || '?')
     .split(' ')
     .map((word) => word?.[0] || '')
@@ -280,9 +343,20 @@ export default function BygdFeed() {
     return <div style={styles.loading}>Laster...</div>
   }
 
+  const headerStyle = bygd?.header_image_url
+    ? { ...styles.header, ...styles.headerWithImage(bygd.header_image_url) }
+    : styles.header
+
   return (
     <div style={styles.container}>
-      <header style={styles.header}>
+      <input
+        type="file"
+        accept="image/*"
+        ref={headerImageInputRef}
+        style={{ display: 'none' }}
+        onChange={handleHeaderImageChange}
+      />
+      <header style={headerStyle}>
         <div style={styles.headerRow}>
           <button onClick={() => navigate('/bygder')} style={styles.backButton}>
             ← Mine bygder
@@ -291,12 +365,25 @@ export default function BygdFeed() {
             {isMember && (
               <div style={styles.headerActions}>
                 {canModerate && (
-                  <button
-                    style={styles.adminButton}
-                    onClick={() => setAdminPanelOpen(true)}
-                  >
-                    Administrer bygda
-                  </button>
+                  <>
+                    <button
+                      style={styles.adminButton}
+                      onClick={() => setAdminPanelOpen(true)}
+                    >
+                      Administrer bygda
+                    </button>
+                    <button
+                      style={{
+                        ...styles.headerImageButton,
+                        opacity: headerImageUploading ? 0.6 : 1,
+                        cursor: headerImageUploading ? 'not-allowed' : 'pointer',
+                      }}
+                      onClick={() => headerImageInputRef.current?.click()}
+                      disabled={headerImageUploading}
+                    >
+                      {headerImageUploading ? 'Laster opp…' : 'Endre bakgrunn'}
+                    </button>
+                  </>
                 )}
                 <button
                   style={styles.shareButton}
@@ -458,7 +545,17 @@ const styles = {
     padding: '20px',
     borderBottomLeftRadius: '16px',
     borderBottomRightRadius: '16px',
+    position: 'sticky',
+    top: 0,
+    zIndex: 30,
+    boxShadow: '0 8px 18px rgba(0,0,0,0.12)',
   },
+  headerWithImage: (imageUrl) => ({
+    backgroundImage: `linear-gradient(120deg, rgba(0,0,0,0.75), rgba(0,0,0,0.45)), url(${imageUrl})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  }),
   headerRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -553,6 +650,16 @@ const styles = {
     fontSize: '18px',
   },
   postsContainer: {
+  headerImageButton: {
+    padding: '10px 18px',
+    borderRadius: '999px',
+    border: '1px solid rgba(255,255,255,0.75)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 600,
+    backdropFilter: 'blur(4px)',
+  },
     marginTop: '20px',
   },
   emptyState: {

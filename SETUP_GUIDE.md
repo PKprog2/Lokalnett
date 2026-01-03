@@ -53,7 +53,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 2. Open `DATABASE_SCHEMA.md` in this repository
 3. Copy and execute each section in order:
    - **profiles table** - User profiles
-   - **bygder table** - Communities
+   - **bygder table** - Communities (inkl. `header_image_url` for toppbakgrunn og moderator-policy for oppdatering)
    - **bygd_members table** - Community memberships
    - **bygd_roles table** - Eiere/moderatorer per bygd
    - **posts table** - User posts
@@ -61,7 +61,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
    - **comments table** - Post comments
    - **direct_conversations table** - Parring av to brukere før en chat
    - **direct_messages table** - Selve meldingene i samtalene
-   - **Triggers** - For automatic count updates
+   - **Triggers & funksjoner** - For automatic count updates, moderator_delete_comment RPC og set_bygd_header_image
    - **Storage buckets** - For media and avatars
 
 4. Verify tables are created:
@@ -130,6 +130,11 @@ The app will be available at http://localhost:5173
 5. **Test direktemeldinger**:
    - Hold musepekeren over navnet til en annen bruker i feeden og klikk «Meld»
    - Sjekk at innboksen (øverst til høyre) viser samtalen og at meldinger kan sendes begge veier
+
+6. **Test moderering**:
+   - Logg inn som en moderator/eier i bygda
+   - Slett en kommentar og oppdater siden for å bekrefte at `moderator_delete_comment`-funksjonen fungerer
+   - Last opp et nytt bakgrunnsbilde i headeren og bekreft at `set_bygd_header_image` fungerer
 
 ### 9. Build for Production
 
