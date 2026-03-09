@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useDirectMessaging } from '../contexts/DirectMessageContext'
 import { supabase } from '../utils/supabaseClient'
 import { useNavigate } from 'react-router-dom'
-import BygdWelcomeAnimation from '../components/BygdWelcomeAnimation'
+import BygdMap from '../components/BygdMap'
 
 export default function Bygder() {
   const [bygder, setBygder] = useState([])
@@ -29,9 +29,9 @@ export default function Bygder() {
   const [searchQuery, setSearchQuery] = useState('')
   const [joiningBygdId, setJoiningBygdId] = useState(null)
   const [roleMap, setRoleMap] = useState({})
-  const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false)
   const [selectedBygdName, setSelectedBygdName] = useState('')
   const [selectedBygdId, setSelectedBygdId] = useState(null)
+  const [transitionBygd, setTransitionBygd] = useState(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [displayNameInput, setDisplayNameInput] = useState('')
   const [displayNameStatus, setDisplayNameStatus] = useState(null)
@@ -118,16 +118,22 @@ export default function Bygder() {
   }, [])
 
   const handleBygdClick = (bygdId, bygdName) => {
-    setSelectedBygdId(bygdId)
-    setSelectedBygdName(bygdName)
-    setShowWelcomeAnimation(true)
+    // Find the bygd object to get coordinates
+    const bygd = allBygder.find(b => b.id === bygdId) || bygder.find(b => b.id === bygdId);
+    
+    if (bygd && bygd.latitude && bygd.longitude) {
+        setTransitionBygd(bygd);
+    } else {
+        // Fallback if no coordinates
+        navigate(`/bygd/${bygdId}`)
+    }
   }
 
-  const handleAnimationComplete = () => {
-    setShowWelcomeAnimation(false)
-    if (selectedBygdId) {
-      navigate(`/bygd/${selectedBygdId}`)
-    }
+  const handleTransitionComplete = () => {
+      if (transitionBygd) {
+          navigate(`/bygd/${transitionBygd.id}`);
+          setTransitionBygd(null);
+      }
   }
 
   const fetchBygder = async () => {
@@ -171,7 +177,7 @@ export default function Bygder() {
     try {
       const { data, error } = await supabase
         .from('bygder')
-        .select('id, name, member_count, max_members')
+        .select('id, name, member_count, max_members, latitude, longitude')
         .order('name', { ascending: true })
 
       if (error) throw error
@@ -436,11 +442,22 @@ export default function Bygder() {
 
   return (
     <div style={styles.container}>
-      {showWelcomeAnimation && (
-        <BygdWelcomeAnimation 
-          bygdName={selectedBygdName} 
-          onComplete={handleAnimationComplete} 
-        />
+      {transitionBygd && (
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 9999,
+            backgroundColor: 'rgba(0,0,0,0.8)'
+        }}>
+            <BygdMap 
+                bygder={allBygder} 
+                targetBygd={transitionBygd}
+                onAnimationComplete={handleTransitionComplete}
+            />
+        </div>
       )}
       <input
         type="file"
